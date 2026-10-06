@@ -1,0 +1,203 @@
+@import url('https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-arena-bg: #04070f;
+  --color-arena-surface: #0b1120;
+  --color-arena-surface2: #131b30;
+  --color-arena-primary: #f6e14b;
+  --color-arena-secondary: #2e8cff;
+  --color-arena-muted: #8b96b5;
+  --color-arena-danger: #ff3b5c;
+
+  --font-display: "Saira Condensed", "Inter", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-arena-bg text-white font-sans antialiased;
+    background-image:
+      radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.18), transparent 60%),
+      radial-gradient(820px 520px at -22% 8%, rgba(246, 225, 75, 0.07), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  ::selection {
+    background: var(--color-arena-primary);
+    color: var(--color-arena-bg);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #070c18;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1d2740;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-arena-secondary);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes brilho {
+  from {
+    transform: translateX(-130%);
+  }
+  to {
+    transform: translateX(130%);
+  }
+}
+
+@keyframes pulsar {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-arena-surface border border-white/10 p-4;
+    clip-path: polygon(
+      16px 0,
+      100% 0,
+      100% calc(100% - 16px),
+      calc(100% - 16px) 100%,
+      0 100%,
+      0 16px
+    );
+  }
+
+  .btn-primary {
+    @apply relative text-black font-bold px-4 py-3 transition overflow-hidden;
+    background: linear-gradient(180deg, #ffea66 0%, #eed12b 100%);
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    clip-path: polygon(
+      12px 0,
+      100% 0,
+      100% calc(100% - 12px),
+      calc(100% - 12px) 100%,
+      0 100%,
+      0 12px
+    );
+  }
+  .btn-primary::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      115deg,
+      transparent 32%,
+      rgba(255, 255, 255, 0.5) 48%,
+      transparent 62%
+    );
+    transform: translateX(-130%);
+  }
+  .btn-primary:hover::after,
+  .btn-primary:active::after {
+    animation: brilho 0.7s ease;
+  }
+  .btn-primary:active {
+    transform: scale(0.98);
+  }
+  .btn-primary:disabled {
+    @apply grayscale opacity-60;
+  }
+
+  .btn-ghost {
+    @apply border border-white/15 bg-white/5 text-white px-4 py-3 transition;
+    font-family: var(--font-display);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    clip-path: polygon(
+      10px 0,
+      100% 0,
+      100% calc(100% - 10px),
+      calc(100% - 10px) 100%,
+      0 100%,
+      0 10px
+    );
+  }
+  .btn-ghost:hover {
+    border-color: rgba(46, 140, 255, 0.55);
+    background: rgba(46, 140, 255, 0.1);
+  }
+  .btn-ghost:active {
+    transform: scale(0.98);
+  }
+
+  .input {
+    @apply w-full bg-arena-surface2 border border-white/10 px-4 py-3 text-white placeholder:text-arena-muted outline-none;
+    clip-path: polygon(
+      8px 0,
+      100% 0,
+      100% calc(100% - 8px),
+      calc(100% - 8px) 100%,
+      0 100%,
+      0 8px
+    );
+  }
+  .input:focus {
+    border-color: rgba(246, 225, 75, 0.7);
+    background: #182241;
+  }
+  .input:disabled {
+    @apply opacity-50;
+  }
+
+  .faixa {
+    background: repeating-linear-gradient(
+      -55deg,
+      rgba(246, 225, 75, 0.16) 0 6px,
+      transparent 6px 16px
+    );
+  }
+
+  .etiqueta {
+    @apply text-[11px] font-bold uppercase tracking-[0.18em] text-arena-secondary;
+    font-family: var(--font-display);
+  }
+
+  .recorte {
+    clip-path: polygon(
+      6px 0,
+      100% 0,
+      100% calc(100% - 6px),
+      calc(100% - 6px) 100%,
+      0 100%,
+      0 6px
+    );
+  }
+}

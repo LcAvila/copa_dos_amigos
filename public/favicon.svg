@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="fundo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#122040"/>
+      <stop offset="1" stop-color="#04070f"/>
+    </linearGradient>
+    <linearGradient id="amarelo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffea66"/>
+      <stop offset="1" stop-color="#eed12b"/>
+    </linearGradient>
+  </defs>
+  <path d="M14 2 H62 V50 L50 62 H2 V14 Z" fill="url(#fundo)"/>
+  <path d="M16 7 H57 V48 L46 57 H7 V17 Z" fill="url(#amarelo)"/>
+  <path d="M7 47 H23 L7 31 Z" fill="#2e8cff"/>
+  <text x="33" y="42" font-family="Arial Black, Arial, sans-serif" font-size="24" font-weight="900" text-anchor="middle" fill="#04070f">CA</text>
+</svg>
