@@ -1,4 +1,4 @@
-// Copa Arena - Edge Function: editar-perfil
+// Copa dos Amigos - Edge Function: editar-perfil
 // Permite que o jogador edite APENAS o próprio perfil, validando o PIN no servidor.
 // Usa service_role (bypassa RLS), mas nunca confia nos dados do cliente:
 // só aceita os campos permitidos e sempre revalida o PIN.

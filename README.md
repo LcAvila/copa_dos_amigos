@@ -1,4 +1,4 @@
-# Copa Arena
+# Copa dos Amigos
 
 Projeto mobile-first para campeonatos de futebol entre amigos, com sorteio de times, grupos, partidas, tabela e acompanhamento em tempo real.
 

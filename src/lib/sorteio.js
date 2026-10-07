@@ -1,4 +1,4 @@
-// Motor do sorteio da Copa Arena — funções puras (testáveis com node).
+// Motor do sorteio da Copa dos Amigos — funções puras (testáveis com node).
 // Não depende de Supabase. As escritas no banco ficam nas páginas/admin.
 
 export function embaralhar(itens) {

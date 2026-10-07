@@ -1,5 +1,5 @@
 -- ============================================================
--- Copa Arena - Schema completo (PostgreSQL / Supabase)
+-- Copa dos Amigos - Schema completo (PostgreSQL / Supabase)
 -- Execute no SQL Editor do Supabase. Arquivo idempotente.
 -- Ordem: tabelas > índices > funções > RLS > realtime > storage
 -- Observação: usa sha256() nativo do PostgreSQL (sem extensões).

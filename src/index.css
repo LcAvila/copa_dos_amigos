@@ -18,10 +18,6 @@
 @layer base {
   body {
     @apply bg-arena-bg text-white font-sans antialiased;
-    background-image:
-      radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.18), transparent 60%),
-      radial-gradient(820px 520px at -22% 8%, rgba(246, 225, 75, 0.07), transparent 55%);
-    background-attachment: fixed;
   }
 
   h1,
@@ -59,31 +55,24 @@
     z-index: -1;
     pointer-events: none;
     background-image:
-      repeating-linear-gradient(
-        90deg,
-        rgba(16, 42, 33, 0.45) 0 46px,
-        rgba(20, 51, 40, 0.45) 46px 92px
-      ),
-      radial-gradient(
-        circle at 50% 50%,
-        transparent 0 150px,
-        rgba(255, 255, 255, 0.05) 150px 152px,
-        transparent 153px
-      ),
-      radial-gradient(
-        circle at 50% 50%,
-        transparent 0 22px,
-        rgba(255, 255, 255, 0.07) 23px 24px,
-        transparent 25px
-      ),
-      linear-gradient(
-        to bottom,
-        transparent 0 49.8%,
-        rgba(255, 255, 255, 0.06) 49.8% 50.2%,
-        transparent 50.2% 100%
-      ),
       radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.18), transparent 60%),
-      radial-gradient(820px 520px at -22% 8%, rgba(246, 225, 75, 0.07), transparent 55%);
+      linear-gradient(rgba(4, 7, 15, 0.42), rgba(4, 7, 15, 0.6)),
+      url("./assets/background 1.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+
+  @media (min-width: 768px) and (orientation: landscape) {
+    body::before {
+      background-image:
+        radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.18), transparent 60%),
+        linear-gradient(rgba(4, 7, 15, 0.42), rgba(4, 7, 15, 0.6)),
+        url("./assets/Paisagem/Background Principal Paisagem.jpg");
+      background-size: cover;
+      background-position: center;
+    }
   }
 
   body::after {
@@ -296,7 +285,11 @@
 
   .btn-primary {
     @apply relative text-black font-bold px-4 py-3 transition overflow-hidden;
-    background: linear-gradient(180deg, #ffea66 0%, #eed12b 100%);
+    background: linear-gradient(180deg, #ffe27a 0%, #f6d62f 100%);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow:
+      0 0 20px rgba(246, 225, 75, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
     font-family: var(--font-display);
     font-weight: 700;
     text-transform: uppercase;
@@ -334,9 +327,10 @@
   }
 
   .btn-ghost {
-    @apply border border-white/15 bg-white/5 text-white px-4 py-3 transition;
+    @apply border border-white/30 bg-white/12 text-white px-4 py-3 transition;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
     font-family: var(--font-display);
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     clip-path: polygon(
@@ -349,8 +343,9 @@
     );
   }
   .btn-ghost:hover {
-    border-color: rgba(46, 140, 255, 0.55);
-    background: rgba(46, 140, 255, 0.1);
+    border-color: rgba(46, 140, 255, 0.85);
+    background: rgba(46, 140, 255, 0.18);
+    box-shadow: 0 0 22px rgba(46, 140, 255, 0.35);
   }
   .btn-ghost:active {
     transform: scale(0.98);
@@ -433,11 +428,10 @@
     animation-delay: 0.35s;
   }
 
-  .btn-ghost:hover {
-    box-shadow: 0 0 18px rgba(46, 140, 255, 0.18);
-  }
   .btn-primary:hover {
-    box-shadow: 0 0 24px rgba(246, 225, 75, 0.35);
+    box-shadow:
+      0 0 30px rgba(246, 225, 75, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
   }
 
   /* Barra de carregamento estilo jogo */

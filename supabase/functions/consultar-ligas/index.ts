@@ -1,4 +1,4 @@
-// Copa Arena - Edge Function: consultar-ligas
+// Copa dos Amigos - Edge Function: consultar-ligas
 // Proxy da football-data.org: sincroniza competições e times para o cache
 // local (tabelas ligas/times) usando a service_role. A chave da API vive
 // apenas no secret FOOTBALL_DATA_TOKEN e nunca aparece no front-end.
