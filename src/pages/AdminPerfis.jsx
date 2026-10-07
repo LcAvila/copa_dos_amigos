@@ -229,7 +229,7 @@ export default function AdminPerfis() {
   })
 
   return (
-    <div>
+    <div className="entrar">
       <CabecalhoAdmin
         titulo="Gerenciar perfis"
         subtitulo="Crie e edite os perfis dos jogadores."

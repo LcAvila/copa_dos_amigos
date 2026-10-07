@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdmin } from '../hooks/useAdmin'
+import BotaoVoltar from '../components/BotaoVoltar'
 
 export default function LoginAdmin() {
   const navigate = useNavigate()
@@ -31,16 +32,14 @@ export default function LoginAdmin() {
   }
 
   return (
-    <div className="py-10">
-      <p className="etiqueta">• Acesso restrito</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">
-        Área do <span className="text-arena-primary">administrador</span>
-      </h1>
-      <p className="mt-1 text-sm text-arena-muted">
-        Entre com a sua conta para gerenciar os campeonatos.
-      </p>
+    <div className="entrar py-6">
+      <BotaoVoltar />
 
-      <form onSubmit={enviar} className="card mt-8 space-y-4">
+      <h1 className="titulo-brilho mt-4 text-center text-4xl font-black uppercase leading-tight tracking-tight">
+        Bem vindo de volta jogador
+      </h1>
+
+      <form onSubmit={enviar} className="card mt-6 space-y-4">
         <div>
           <label className="text-xs font-semibold uppercase tracking-widest text-arena-muted">
             E-mail

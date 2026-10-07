@@ -1,8 +1,6 @@
-import { useNavigate } from 'react-router-dom'
+import BotaoVoltar from './BotaoVoltar'
 
 export default function CabecalhoAdmin({ titulo, subtitulo, acao }) {
-  const navigate = useNavigate()
-
   return (
     <div className="pt-6">
       <div className="flex items-start justify-between gap-3">
@@ -12,19 +10,12 @@ export default function CabecalhoAdmin({ titulo, subtitulo, acao }) {
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {acao}
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1 text-sm text-arena-muted active:text-white"
-          >
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            Voltar
-          </button>
+          <BotaoVoltar />
         </div>
       </div>
-      <div className="mt-4 h-1.5 w-full bg-gradient-to-r from-arena-primary via-arena-secondary to-transparent recorte" />
+      <div className="recorte relative mt-4 h-1.5 w-full overflow-hidden bg-gradient-to-r from-arena-primary via-arena-secondary to-transparent">
+        <span className="absolute inset-y-0 w-1/3 animate-[barraPulso_1.8s_ease-in-out_infinite] bg-white/60 blur-[2px]" />
+      </div>
     </div>
   )
 }

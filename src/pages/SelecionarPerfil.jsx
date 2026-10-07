@@ -4,59 +4,112 @@ import { supabase } from '../lib/supabaseClient'
 import { useSessaoJogador } from '../hooks/useSessaoJogador'
 import Loading from '../components/Loading'
 import StatusBadge from '../components/StatusBadge'
+import CampoIntro from '../components/CampoIntro'
+import BotaoVoltar from '../components/BotaoVoltar'
+import { Trofeu, Bola } from '../components/Artes'
 
 function Inicial({ nome, className = 'size-14 text-lg' }) {
   return (
-    <div className={`flex items-center justify-center rounded-full bg-arena-surface2 border border-white/10 font-display font-bold text-arena-primary ${className}`}>
+    <div className={`flex items-center justify-center rounded-full bg-arena-surface2 border border-white/10 font-display font-bold text-arena-primary uppercase ${className}`}>
       {nome?.trim()?.[0]?.toUpperCase() ?? '?'}
     </div>
   )
 }
 
-function AvatarPerfil({ perfil, time }) {
+function AvatarPerfil({ perfil, time, className = 'size-14', escudoClassName = 'size-7' }) {
   return (
     <div className="flex items-end gap-1 shrink-0">
       {perfil.avatar_url ? (
         <img
           src={perfil.avatar_url}
           alt={perfil.nome}
-          className="size-14 rounded-full object-cover border border-white/10"
+          className={`${className} rounded-full object-cover border-2 border-arena-primary/30 shadow-[0_0_20px_rgba(246,225,75,0.15)]`}
         />
       ) : (
-        <Inicial nome={perfil.nome} />
+        <Inicial nome={perfil.nome} className={className} />
       )}
       {time?.escudo_url && (
         <img
           src={time.escudo_url}
           alt={time.nome}
           title={time.nome}
-          className="size-7 object-contain"
+          className={`${escudoClassName} -ml-2 object-contain drop-shadow-[0_0_8px_rgba(0,0,0,0.6)]`}
         />
       )}
     </div>
   )
 }
 
-function ItemPerfil({ perfil, tempoEspera = 0, onSelecionar }) {
+function ItemPerfil({ perfil, tempoEspera = 0, onSelecionar, etiqueta }) {
   return (
     <button
       type="button"
       onClick={() => onSelecionar(perfil)}
       style={{ animationDelay: `${tempoEspera}ms` }}
-      className="card w-full flex items-center gap-4 text-left transition active:scale-[0.98] hover:border-arena-primary/40 animate-[fadeIn_300ms_ease-out_both]"
+      className="card group relative block w-full !p-0 overflow-hidden text-left transition active:scale-[0.98] hover:border-arena-primary/40 animate-[fadeIn_300ms_ease-out_both]"
     >
-      <AvatarPerfil perfil={perfil} time={perfil.time_coracao} />
-      <div className="min-w-0 flex-1">
-        <p className="font-display text-lg font-bold leading-tight truncate">{perfil.nome}</p>
-        {perfil.time_coracao && (
-          <p className="text-xs text-arena-muted truncate">{perfil.time_coracao.nome}</p>
+      <div className={`relative flex items-center gap-4 overflow-hidden ${perfil.capa_url ? 'min-h-24 bg-arena-surface2' : 'bg-gradient-to-r from-arena-surface2 to-arena-surface'} p-4`}>
+        {perfil.capa_url && (
+          <img
+            src={perfil.capa_url}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 size-full object-cover"
+          />
         )}
+        {perfil.capa_url && (
+          <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-arena-bg via-arena-bg/40 to-arena-bg/10" />
+        )}
+        <span className="pointer-events-none absolute -right-8 -top-8 size-28 rounded-full bg-arena-primary/5 transition group-hover:bg-arena-primary/10" />
+        {perfil.capa_url && (
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/5" />
+        )}
+        <Bola className="pointer-events-none absolute -bottom-5 right-16 size-12 opacity-[0.04] transition animate-[girarBola_12s_linear_infinite] group-hover:opacity-10" />
+
+        {etiqueta && (
+          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-arena-primary/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-arena-primary ring-1 ring-arena-primary/30">
+            {etiqueta}
+          </span>
+        )}
+
+        <AvatarPerfil
+          perfil={perfil}
+          time={perfil.time_coracao}
+          className="size-16"
+          escudoClassName="size-8"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-xl font-extrabold leading-tight truncate">{perfil.nome}</p>
+          <p className="mt-0.5 text-xs text-arena-muted truncate">
+            {perfil.time_coracao?.nome ?? 'Sem time do coração'}
+          </p>
+        </div>
       </div>
-      {perfil.possui_senha && (
-        <svg viewBox="0 0 24 24" className="size-5 text-arena-muted shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-          <path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6v-9z" />
-        </svg>
-      )}
+
+      <div className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-2.5">
+        {perfil.possui_senha ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-arena-muted">
+            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6v-9z" />
+            </svg>
+            Protegido por PIN
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-arena-muted">
+            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M9 12l2 2 4-4" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+            Acesso livre
+          </span>
+        )}
+        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-arena-secondary transition group-hover:text-arena-primary">
+          Entrar
+          <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </span>
+      </div>
     </button>
   )
 }
@@ -202,47 +255,36 @@ export default function SelecionarPerfil() {
   }
 
   return (
-    <div className="py-6">
-      {etapa !== 'perfis' && (
-        <button
-          type="button"
-          onClick={() => setEtapa('perfis')}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-arena-muted active:text-white"
-        >
-          <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          Voltar
-        </button>
-      )}
+    <div className="entrar py-6">
+      <BotaoVoltar className="mb-4" />
 
       {etapa === 'perfis' && (
         <>
-          <p className="etiqueta">• Jogadores</p>
-          <h1 className="mt-2 font-display text-3xl font-bold">Quem é você?</h1>
-          <p className="mt-1 text-sm text-arena-muted">Selecione o seu perfil para entrar.</p>
+          <CampoIntro
+            frase="A ARENA É SUA,"
+            palavras={['JOGADOR', 'CAMPEÃO', 'ARTILHEIRO', 'GOAT']}
+            rotulo="Jogadores"
+            subtitulo="Escolha o seu perfil para entrar."
+          />
 
-          {sessao && (
-            <div className="card mt-6 border-arena-primary/40">
-              <p className="text-xs uppercase tracking-widest text-arena-muted">Última entrada</p>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <p className="font-display text-lg font-bold truncate">{sessao.nome}</p>
-                <div className="flex items-center gap-3 shrink-0">
-                  <Link to={`/perfil/${sessao.id}`} className="text-sm text-arena-secondary active:opacity-70">
-                    Ver perfil
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sair()
-                      setEtapa('perfis')
-                    }}
-                    className="text-sm text-arena-muted active:opacity-70"
-                  >
-                    Trocar
-                  </button>
-                </div>
+          {sessao && perfis.some((p) => p.id === sessao.id) && (
+            <div className="entrar mt-6">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="etiqueta">• Última entrada</p>
+                <button
+                  type="button"
+                  onClick={() => sair()}
+                  className="text-xs text-arena-muted active:text-white"
+                >
+                  Trocar perfil
+                </button>
               </div>
+              <ItemPerfil
+                perfil={perfis.find((p) => p.id === sessao.id)}
+                tempoEspera={0}
+                onSelecionar={selecionarPerfil}
+                etiqueta="Última entrada"
+              />
             </div>
           )}
 
@@ -268,9 +310,11 @@ export default function SelecionarPerfil() {
 
           {!carregando && !erro && perfis.length > 0 && (
             <div className="mt-6 space-y-3">
-              {perfis.map((p, i) => (
-                <ItemPerfil key={p.id} perfil={p} tempoEspera={i * 50} onSelecionar={selecionarPerfil} />
-              ))}
+              {perfis
+                .filter((p) => p.id !== sessao?.id)
+                .map((p, i) => (
+                  <ItemPerfil key={p.id} perfil={p} tempoEspera={i * 50} onSelecionar={selecionarPerfil} />
+                ))}
             </div>
           )}
 
@@ -282,7 +326,9 @@ export default function SelecionarPerfil() {
 
       {etapa === 'pin' && perfilSelecionado && (
         <div className="flex flex-col items-center pt-6 text-center">
-          <AvatarPerfil perfil={perfilSelecionado} time={perfilSelecionado.time_coracao} />
+          <div className="animate-[boiar_3s_ease-in-out_infinite] rounded-full bg-arena-primary/10 p-3">
+            <AvatarPerfil perfil={perfilSelecionado} time={perfilSelecionado.time_coracao} />
+          </div>
           <h1 className="mt-4 font-display text-2xl font-bold">{perfilSelecionado.nome}</h1>
           <p className="mt-1 text-sm text-arena-muted">Este perfil tem PIN. Digite para continuar.</p>
 
@@ -320,12 +366,15 @@ export default function SelecionarPerfil() {
       {etapa === 'torneios' && (
         <>
           <p className="etiqueta">• Campeonatos</p>
-          <h1 className="mt-2 font-display text-3xl font-bold">Escolha o campeonato</h1>
+          <h1 className="mt-2 flex items-center gap-2 font-display text-3xl font-bold">
+            <Trofeu className="size-7 shrink-0" />
+            Escolha o campeonato
+          </h1>
           <p className="mt-1 text-sm text-arena-muted">
             {sessao ? `Bem-vindo(a), ${sessao.nome}!` : 'Você está entrando como visitante.'}
           </p>
 
-          <div className="mt-6 space-y-3">
+          <div className="entrar mt-6 space-y-3">
             {torneios.length === 0 && (
               <div className="card text-center">
                 <p className="font-display text-lg font-bold">Nenhum campeonato disponível</p>
@@ -339,15 +388,29 @@ export default function SelecionarPerfil() {
                 key={t.id}
                 type="button"
                 onClick={() => navigate(`/torneio/${t.id}`)}
-                className="card w-full flex items-center justify-between gap-3 text-left transition active:scale-[0.98] hover:border-arena-primary/40"
+                className="card group relative block w-full !p-0 overflow-hidden text-left transition active:scale-[0.98] hover:border-arena-primary/40"
               >
-                <div className="min-w-0">
-                  <p className="font-display text-lg font-bold truncate">{t.nome}</p>
-                  <p className="text-xs text-arena-muted truncate">
-                    {[t.plataforma, t.jogo, `${t.mes}/${t.ano}`].filter(Boolean).join(' • ')}
-                  </p>
+                <div className="relative overflow-hidden bg-gradient-to-r from-arena-surface2 to-arena-surface p-4">
+                  <span className="pointer-events-none absolute -right-8 -top-8 size-28 rounded-full bg-arena-primary/5 transition group-hover:bg-arena-primary/10" />
+                  <Bola className="pointer-events-none absolute -bottom-5 right-16 size-12 opacity-[0.04] transition animate-[girarBola_12s_linear_infinite] group-hover:opacity-10" />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-display text-xl font-extrabold leading-tight truncate">{t.nome}</p>
+                      <p className="mt-0.5 text-xs text-arena-muted truncate">
+                        {[t.plataforma, t.jogo, `${t.mes}/${t.ano}`].filter(Boolean).join(' • ')}
+                      </p>
+                    </div>
+                    <StatusBadge status={t.status} />
+                  </div>
                 </div>
-                <StatusBadge status={t.status} />
+                <div className="flex items-center justify-end border-t border-white/10 px-4 py-2.5">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-arena-secondary transition group-hover:text-arena-primary">
+                    Entrar no campeonato
+                    <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </span>
+                </div>
               </button>
             ))}
           </div>

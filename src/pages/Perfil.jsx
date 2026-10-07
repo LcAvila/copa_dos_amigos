@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import BotaoVoltar from '../components/BotaoVoltar'
 import { supabase } from '../lib/supabaseClient'
 import { useSessaoJogador } from '../hooks/useSessaoJogador'
 import { arquivoParaBase64, limitarArquivo } from '../lib/imagem'
@@ -295,18 +296,9 @@ export default function Perfil() {
       : perfil.capa_url
 
   return (
-    <div className="py-6">
+    <div className="entrar py-6">
       <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-1 text-sm text-arena-muted active:text-white"
-        >
-          <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          Voltar
-        </button>
+        <BotaoVoltar />
         {sessao && (
           <button
             type="button"

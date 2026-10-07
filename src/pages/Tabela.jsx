@@ -5,9 +5,18 @@ import { useAdmin } from '../hooks/useAdmin'
 import CabecalhoAdmin from '../components/CabecalhoAdmin'
 import Loading from '../components/Loading'
 import StatusBadge from '../components/StatusBadge'
+import Confete from '../components/Confete'
+import { Bola } from '../components/Artes'
 import { gerarJogos } from '../lib/tabela'
+import {
+  classificadosParaMataMata,
+  montarChaveMataMata,
+  montarProximaFase,
+  vencedorDeJogo,
+} from '../lib/mataMata'
 
 const ORDEM_FASES = ['grupos', 'oitavas', 'quartas', 'semi', 'terceiro', 'final']
+const FASES_MATA_MATA = ['oitavas', 'quartas', 'semi', 'final', 'terceiro']
 
 const ROTULOS_FASE = {
   grupos: 'Fase de grupos',
@@ -25,6 +34,39 @@ function mensagemErro(error, padrao) {
 
 function nomeDe(participante) {
   return participante?.perfil?.nome ?? participante?.apelido ?? 'A definir'
+}
+
+function agruparPorRodada(jogos) {
+  const blocos = []
+  for (const partida of jogos) {
+    const ultimo = blocos[blocos.length - 1]
+    if (ultimo && ultimo.rodada === partida.rodada) {
+      ultimo.jogos.push(partida)
+    } else {
+      blocos.push({ rodada: partida.rodada, jogos: [partida] })
+    }
+  }
+  return blocos
+}
+
+function proximaFaseEmAberto(porFase) {
+  for (let i = 0; i < FASES_MATA_MATA.length - 1; i += 1) {
+    const fasePai = FASES_MATA_MATA[i]
+    const jogos = porFase[fasePai] ?? []
+    if (jogos.length === 0) continue
+    if (!jogos.every((j) => j.finalizada)) return null
+
+    if (fasePai === 'semi') {
+      const criar = []
+      if ((porFase.final ?? []).length === 0) criar.push('final')
+      if ((porFase.terceiro ?? []).length === 0) criar.push('terceiro')
+      return criar.length > 0 ? { fasePai, criar } : null
+    }
+
+    const proxima = FASES_MATA_MATA[i + 1]
+    if ((porFase[proxima] ?? []).length === 0) return { fasePai, criar: [proxima] }
+  }
+  return null
 }
 
 function Avatar({ url, nome }) {
@@ -101,6 +143,7 @@ export default function Tabela() {
   const [aviso, setAviso] = useState('')
   const [gerando, setGerando] = useState(false)
   const [confirmandoGerar, setConfirmandoGerar] = useState(false)
+  const [gerandoMataMata, setGerandoMataMata] = useState(false)
   const [grupoFiltro, setGrupoFiltro] = useState('*')
   const [editando, setEditando] = useState(null)
   const [formPlacar, setFormPlacar] = useState(null)
@@ -121,7 +164,7 @@ export default function Tabela() {
       supabase.from('torneios').select('*').eq('id', id).single(),
       supabase
         .from('participantes')
-        .select('*, perfis(id, nome, avatar_url), times(id, nome, sigla, escudo_url)')
+        .select('*, perfil:perfis(id, nome, avatar_url), times(id, nome, sigla, escudo_url)')
         .eq('torneio_id', id)
         .order('ordem_sorteio', { ascending: true, nullsFirst: false }),
       supabase.from('partidas').select('*').eq('torneio_id', id),
@@ -233,6 +276,124 @@ export default function Tabela() {
     recarregar()
   }
 
+  async function garantirCampeao() {
+    const [torneioAtual, partidasAtuais] = await Promise.all([
+      supabase.from('torneios').select('*').eq('id', id).single(),
+      supabase.from('partidas').select('*').eq('torneio_id', id).eq('fase', 'final'),
+    ])
+    await registrarCampeao(torneioAtual.data, partidasAtuais.data ?? [])
+  }
+
+  async function registrarCampeao(torneioAtual, partidasAtuais) {
+    try {
+      if (!torneioAtual || torneioAtual.status === 'finalizado' || torneioAtual.config?.campeao) {
+        return
+      }
+      const finais = (partidasAtuais ?? []).filter((p) => p.fase === 'final' && p.finalizada)
+      if (finais.length !== 1) return
+      const vencedor = vencedorDeJogo(finais[0])
+      if (vencedor === undefined) return
+
+      const config = {
+        ...(torneioAtual.config ?? {}),
+        campeao: { participante_id: vencedor, geradoEm: new Date().toISOString() },
+      }
+      const { error } = await supabase
+        .from('torneios')
+        .update({ config, status: 'finalizado' })
+        .eq('id', id)
+      if (!error) {
+        setAviso('Final concluída! Campeão definido.')
+        setRecarga((r) => r + 1)
+      }
+    } catch {
+      // segue a vida: o próximo carregamento tenta de novo
+    }
+  }
+
+  async function gerarMataMata() {
+    if (gerandoMataMata) return
+    const cfg = torneio.config ?? {}
+    const classificados = classificadosParaMataMata(participantes, partidas, {
+      classificadosPorGrupo: cfg.grupos?.classificadosPorGrupo ?? 2,
+      melhoresTerceiros: cfg.grupos?.melhoresTerceiros ?? 0,
+      desempate: cfg.desempate ?? ['saldo_gols', 'gols_pro'],
+    })
+    const chave = montarChaveMataMata(classificados)
+    if (!chave) {
+      setErro(
+        'O mata-mata precisa de 4, 8 ou 16 classificados. Ajuste a quantidade de grupos/classificados na configuração.',
+      )
+      return
+    }
+
+    setGerandoMataMata(true)
+    setErro('')
+    const { error } = await supabase
+      .from('partidas')
+      .insert(chave.map((j) => ({ ...j, torneio_id: id })))
+    if (error) {
+      setGerandoMataMata(false)
+      setErro(mensagemErro(error, 'Não foi possível gerar o mata-mata.'))
+      return
+    }
+
+    const config = {
+      ...cfg,
+      mataMata: { ...(cfg.mataMata ?? {}), geradoEm: new Date().toISOString(), presente: true },
+    }
+    const statusNovo = ['configuracao', 'inscricoes', 'sorteio', 'grupos'].includes(torneio.status)
+      ? 'mata_mata'
+      : torneio.status
+    const { error: erroStatus } = await supabase
+      .from('torneios')
+      .update({ config, status: statusNovo })
+      .eq('id', id)
+
+    setGerandoMataMata(false)
+    if (erroStatus) {
+      setErro(mensagemErro(erroStatus, 'O mata-mata foi gerado, mas o status não foi atualizado.'))
+    } else {
+      setAviso(`Mata-mata gerado: ${chave.length} confrontos.`)
+    }
+    recarregar()
+  }
+
+  async function avancarFase() {
+    if (gerandoMataMata) return
+    const porFase = Object.fromEntries(
+      FASES_MATA_MATA.map((fase) => [fase, partidas.filter((p) => p.fase === fase)]),
+    )
+    const alvo = proximaFaseEmAberto(porFase)
+    if (!alvo || alvo.criar.length === 0) return
+
+    const resultado = montarProximaFase(porFase[alvo.fasePai])
+    if (!resultado) {
+      setErro('Não foi possível montar a próxima fase. Verifique os placares e pênaltis das partidas.')
+      return
+    }
+
+    const linhas = [...resultado.jogos]
+    if (
+      resultado.terceiro &&
+      alvo.criar.includes('terceiro') &&
+      (porFase.terceiro ?? []).length === 0
+    ) {
+      linhas.push(resultado.terceiro)
+    }
+
+    setGerandoMataMata(true)
+    setErro('')
+    const { error } = await supabase.from('partidas').insert(linhas.map((l) => ({ ...l, torneio_id: id })))
+    setGerandoMataMata(false)
+    if (error) {
+      setErro(mensagemErro(error, 'Não foi possível gerar a próxima fase.'))
+      return
+    }
+    setAviso(`Próxima fase gerada.`)
+    recarregar()
+  }
+
   function selecionar(partida) {
     if (editando === partida.id) {
       setEditando(null)
@@ -291,6 +452,7 @@ export default function Tabela() {
     setEditando(null)
     setFormPlacar(null)
     setAviso('Resultado salvo!')
+    garantirCampeao()
   }
 
   async function limparResultado() {
@@ -315,6 +477,7 @@ export default function Tabela() {
     setEditando(null)
     setFormPlacar(null)
     setAviso('Resultado limpo.')
+    garantirCampeao()
   }
 
   if (carregando) return <Loading texto="Carregando tabela..." />
@@ -335,25 +498,24 @@ export default function Tabela() {
   const mataMata = partidas.filter((p) => p.fase !== 'grupos')
   const grupos = [...new Set(faseGrupos.map((p) => p.grupo ?? 'Geral'))].sort()
   const cfgGrupos = torneio.config?.grupos
+  const gruposTodosFinalizados =
+    faseGrupos.length > 0 && faseGrupos.every((p) => p.finalizada)
+
+  const porFaseMM = Object.fromEntries(
+    FASES_MATA_MATA.map((fase) => [fase, mataMata.filter((p) => p.fase === fase)]),
+  )
+  const podeAvancar = proximaFaseEmAberto(porFaseMM)
 
   const grupoAtivo = grupos.includes(grupoFiltro) ? grupoFiltro : '*'
   const filtradas = faseGrupos
     .filter((p) => grupoAtivo === '*' || (p.grupo ?? 'Geral') === grupoAtivo)
     .sort((a, b) => (a.rodada ?? 0) - (b.rodada ?? 0))
 
-  const rodadas = []
-  for (const partida of filtradas) {
-    const ultima = rodadas[rodadas.length - 1]
-    if (ultima && ultima.rodada === partida.rodada) {
-      ultima.jogos.push(partida)
-    } else {
-      rodadas.push({ rodada: partida.rodada, jogos: [partida] })
-    }
-  }
+  const rodadas = agruparPorRodada(filtradas)
 
   const porFase = ORDEM_FASES.filter(
     (fase) => fase !== 'grupos' && mataMata.some((p) => p.fase === fase),
-  ).map((fase) => ({ fase, jogos: mataMata.filter((p) => p.fase === fase) }))
+  ).map((fase) => ({ fase, confrontos: agruparPorRodada(mataMata.filter((p) => p.fase === fase)) }))
 
   function botaoPartida(partida) {
     return (
@@ -480,7 +642,7 @@ export default function Tabela() {
         acao={<StatusBadge status={torneio.status} />}
       />
 
-      <div className="mt-6 space-y-3">
+      <div className="entrar mt-6 space-y-3">
         {aviso && <div className="card border-arena-primary/40 text-sm text-arena-primary">{aviso}</div>}
         {erro && <div className="card border-arena-danger/40 text-sm text-arena-danger">{erro}</div>}
 
@@ -563,7 +725,8 @@ export default function Tabela() {
         {total > 0 && (
           <section className="card space-y-3">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-arena-primary">
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-arena-primary">
+                <Bola className="size-3.5 animate-[girarBola_4s_linear_infinite]" />
                 2. Jogos
               </p>
               <h2 className="font-display text-lg font-bold leading-tight">Resultados</h2>
@@ -580,7 +743,7 @@ export default function Tabela() {
                 {partidas.map((partida) => (
                   <span
                     key={partida.id}
-                    className={`h-1.5 flex-1 ${partida.finalizada ? 'bg-arena-primary' : 'bg-white/10'}`}
+                    className={`h-1.5 flex-1 transition-colors duration-300 ${partida.finalizada ? 'bg-arena-primary' : 'bg-white/10'}`}
                   />
                 ))}
               </div>
@@ -623,11 +786,83 @@ export default function Tabela() {
                 <p className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-arena-secondary">
                   {ROTULOS_FASE[bloco.fase]}
                 </p>
-                {bloco.jogos.map(botaoPartida)}
+                {bloco.confrontos.map((confronto) => (
+                  <div key={`${bloco.fase}-${confronto.rodada}`} className="space-y-2">
+                    {bloco.fase === 'grupos' ? null : (
+                      <p className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-arena-muted">
+                        Confronto {confronto.rodada}
+                      </p>
+                    )}
+                    {confronto.jogos.map(botaoPartida)}
+                  </div>
+                ))}
               </div>
             ))}
           </section>
         )}
+
+        <section className="card relative space-y-3 overflow-hidden">
+          {torneio.status === 'finalizado' && <Confete />}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-arena-primary">
+              3. Mata-mata
+            </p>
+            <h2 className="font-display text-lg font-bold leading-tight">Chaveamento</h2>
+            <p className="mt-0.5 text-xs text-arena-muted">
+              {mataMata.length > 0
+                ? `${mataMata.length} ${mataMata.length === 1 ? 'partida' : 'partidas'} • jogos únicos •
+                  vencedor avança a partir da classificação`
+                : 'Gerado automaticamente a partir dos classificados da fase de grupos.'}
+            </p>
+          </div>
+
+          {ehAdmin ? (
+            <div className="flex flex-col gap-2">
+              {mataMata.length === 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-primary w-full disabled:opacity-60"
+                    onClick={gerarMataMata}
+                    disabled={gerandoMataMata || !gruposTodosFinalizados}
+                  >
+                    {gerandoMataMata ? 'Gerando...' : 'Gerar mata-mata'}
+                  </button>
+                  {!gruposTodosFinalizados && (
+                    <p className="text-xs text-arena-muted">
+                      Finalize todos os jogos da fase de grupos para liberar o mata-mata.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {podeAvancar ? (
+                    <button
+                      type="button"
+                      className="btn-primary w-full disabled:opacity-60"
+                      onClick={avancarFase}
+                      disabled={gerandoMataMata}
+                    >
+                      {gerandoMataMata
+                        ? 'Gerando...'
+                        : `Gerar próxima fase (${podeAvancar.criar
+                            .map((f) => ROTULOS_FASE[f])
+                            .join(' + ')})`}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-arena-muted">
+                      Aguardando os placares das fases anteriores para avançar.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-arena-muted">
+              O administrador controla o mata-mata. Esta tela atualiza em tempo real.
+            </p>
+          )}
+        </section>
       </div>
     </div>
   )

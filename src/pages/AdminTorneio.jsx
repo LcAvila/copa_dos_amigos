@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAdmin } from '../hooks/useAdmin'
 import CabecalhoAdmin from '../components/CabecalhoAdmin'
 import Loading from '../components/Loading'
+import { analisarFormato, PRESETS_COPA } from '../lib/regras'
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -35,16 +36,6 @@ const CRITERIOS = [
   { valor: 'gols_contra', texto: 'Menos gols sofridos' },
 ]
 
-const STATUS = [
-  { valor: 'configuracao', texto: 'Em configuração' },
-  { valor: 'inscricoes', texto: 'Inscrições abertas' },
-  { valor: 'sorteio', texto: 'Sorteio' },
-  { valor: 'grupos', texto: 'Fase de grupos' },
-  { valor: 'mata_mata', texto: 'Mata-mata' },
-  { valor: 'finalizado', texto: 'Finalizado' },
-  { valor: 'cancelado', texto: 'Cancelado' },
-]
-
 const agora = new Date()
 
 function formInicial(torneio, configOriginal) {
@@ -57,7 +48,6 @@ function formInicial(torneio, configOriginal) {
       jogo: 'EA FC 26',
       jogoCustom: '',
       formato: 'grupos_mata_mata',
-      status: 'configuracao',
       gruposQtd: 4,
       jogadoresPorGrupo: 4,
       classificadosPorGrupo: 2,
@@ -83,7 +73,6 @@ function formInicial(torneio, configOriginal) {
     jogo: jogoConhecido ? torneio.jogo : 'Outro',
     jogoCustom: jogoConhecido ? '' : torneio.jogo,
     formato: torneio.formato,
-    status: torneio.status,
     gruposQtd: cfg.grupos?.quantidade ?? 4,
     jogadoresPorGrupo: cfg.grupos?.jogadoresPorGrupo ?? 4,
     classificadosPorGrupo: cfg.grupos?.classificadosPorGrupo ?? 2,
@@ -101,10 +90,14 @@ function formInicial(torneio, configOriginal) {
 function Secao({ numero, titulo, descricao, children }) {
   return (
     <section className="card space-y-4">
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-widest text-arena-primary">{numero}</p>
-        <h2 className="font-display text-lg font-bold leading-tight">{titulo}</h2>
-        {descricao && <p className="mt-0.5 text-xs text-arena-muted">{descricao}</p>}
+      <div className="flex items-start gap-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-arena-primary font-display text-sm font-black text-arena-bg">
+          {numero}
+        </span>
+        <div>
+          <h2 className="font-display text-lg font-bold leading-tight">{titulo}</h2>
+          {descricao && <p className="mt-0.5 text-xs text-arena-muted">{descricao}</p>}
+        </div>
       </div>
       {children}
     </section>
@@ -160,6 +153,66 @@ function Alternar({ rotulo, descricao, valor, onChange }) {
   )
 }
 
+function ResumoRegras({ resumo }) {
+  if (!resumo) return null
+  const itens = [
+    ...resumo.confirmacoes.map((texto) => ({ texto, tipo: 'ok' })),
+    ...resumo.avisos.map((texto) => ({ texto, tipo: 'aviso' })),
+  ]
+
+  return (
+    <div className="space-y-2 rounded-xl border border-white/10 bg-arena-surface2 px-3 py-3">
+      {resumo.faseRotulo && (
+        <p className="flex items-center gap-2 font-display text-[11px] font-bold uppercase tracking-[0.15em] text-arena-secondary">
+          <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+          </svg>
+          Fase final: {resumo.faseRotulo}
+        </p>
+      )}
+      {itens.map((item, i) =>
+        item.tipo === 'ok' ? (
+          <p key={i} className="flex items-start gap-2 text-xs text-arena-primary">
+            <svg viewBox="0 0 24 24" className="mt-0.5 size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+            {item.texto}
+          </p>
+        ) : (
+          <p key={i} className="flex items-start gap-2 text-xs text-arena-danger">
+            <svg viewBox="0 0 24 24" className="mt-0.5 size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+              <path d="M12 4L2.5 20h19z" />
+              <path d="M12 10v4" />
+              <path d="M12 17.2v.2" />
+            </svg>
+            {item.texto}
+          </p>
+        ),
+      )}
+    </div>
+  )
+}
+
+function EmblemaCard({ liga, grande = false }) {
+  if (liga.emblema_url) {
+    return (
+      <img
+        src={liga.emblema_url}
+        alt=""
+        loading="lazy"
+        className={`${grande ? 'size-10' : 'size-7'} shrink-0 rounded bg-white/10 object-contain p-0.5`}
+      />
+    )
+  }
+  return (
+    <span
+      className={`${grande ? 'size-10 text-sm' : 'size-7 text-[10px]'} flex shrink-0 items-center justify-center rounded bg-white/10 font-bold text-arena-muted`}
+    >
+      {(liga.pais ?? '?').slice(0, 2).toUpperCase()}
+    </span>
+  )
+}
+
 export default function AdminTorneio() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -182,6 +235,14 @@ export default function AdminTorneio() {
   const [avisoLigas, setAvisoLigas] = useState('')
   const [novaLiga, setNovaLiga] = useState('')
   const [novoTime, setNovoTime] = useState('')
+
+  // Fluxo de criação: liga -> times -> criar
+  const [ligaCriacao, setLigaCriacao] = useState(null)
+  const [timesLiga, setTimesLiga] = useState([])
+  const [timesCriacao, setTimesCriacao] = useState({})
+  const [carregandoTimesLiga, setCarregandoTimesLiga] = useState(false)
+  const [avisoCriacao, setAvisoCriacao] = useState('')
+  const [novoTimeLiga, setNovoTimeLiga] = useState('')
 
   useEffect(() => {
     if (!id) return undefined
@@ -209,30 +270,34 @@ export default function AdminTorneio() {
   }, [id])
 
   useEffect(() => {
-    if (!id) return undefined
-
     let ativo = true
-    Promise.all([
+    const consultas = [
       supabase
         .from('ligas')
         .select('*')
         .eq('ativa', true)
         .order('pais', { ascending: true })
         .order('nome', { ascending: true }),
-      supabase.from('torneio_ligas').select('liga_id').eq('torneio_id', id),
-      supabase
-        .from('torneio_times')
-        .select('time_id, disponivel, times(id, liga_id)')
-        .eq('torneio_id', id),
-    ]).then(([resLigas, resTL, resTT]) => {
+    ]
+    if (id) {
+      consultas.push(
+        supabase.from('torneio_ligas').select('liga_id').eq('torneio_id', id),
+        supabase
+          .from('torneio_times')
+          .select('time_id, disponivel, times(id, liga_id)')
+          .eq('torneio_id', id),
+      )
+    }
+    Promise.all(consultas).then((res) => {
       if (!ativo) return
+      const [resLigas, resTL, resTT] = res
       if (!resLigas.error) setLigas(resLigas.data ?? [])
-      if (!resTL.error) {
+      if (resTL && !resTL.error) {
         const mapa = {}
         for (const linha of resTL.data ?? []) mapa[linha.liga_id] = true
         setLigasHabilitadas(mapa)
       }
-      if (!resTT.error) {
+      if (resTT && !resTT.error) {
         const disponiveis = {}
         const porLiga = {}
         for (const linha of resTT.data ?? []) {
@@ -357,6 +422,71 @@ export default function AdminTorneio() {
     setTimeLiga((m) => ({ ...m, [time.id]: liga.id }))
   }
 
+  // --- Fluxo de criação: liga e times -------------------------------
+
+  function escolherLigaCriacao(liga) {
+    if (ligaCriacao?.id === liga.id) {
+      setLigaCriacao(null)
+      setTimesLiga([])
+      setTimesCriacao({})
+      return
+    }
+    setLigaCriacao(liga)
+    setTimesLiga([])
+    setTimesCriacao({})
+    setCarregandoTimesLiga(true)
+    setAvisoCriacao('')
+    setNovoTimeLiga('')
+    supabase
+      .from('times')
+      .select('*')
+      .eq('liga_id', liga.id)
+      .eq('ativo', true)
+      .order('nome', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          setAvisoCriacao('Não foi possível carregar os times desta liga.')
+        } else {
+          setTimesLiga(data ?? [])
+        }
+        setCarregandoTimesLiga(false)
+      })
+  }
+
+  function alternarTimeCriacao(time) {
+    setTimesCriacao((m) => ({ ...m, [time.id]: !m[time.id] }))
+  }
+
+  function marcarTodosCriacao(marcar) {
+    const novo = {}
+    for (const time of timesLiga) novo[time.id] = marcar
+    setTimesCriacao(novo)
+  }
+
+  async function criarTimeManualLiga() {
+    const nome = novoTimeLiga.trim()
+    if (!nome || !ligaCriacao) return
+    setAvisoCriacao('')
+    const { data, error } = await supabase
+      .from('times')
+      .insert({
+        nome,
+        liga_id: ligaCriacao.id,
+        liga_nome: ligaCriacao.nome,
+        tipo: 'custom',
+        ativo: true,
+      })
+      .select('*')
+      .single()
+    if (error) {
+      setAvisoCriacao('Não foi possível criar o time.')
+      return
+    }
+    setTimesLiga((lista) => [...lista, data].sort((a, b) => a.nome.localeCompare(b.nome)))
+    setTimesCriacao((m) => ({ ...m, [data.id]: true }))
+    setNovoTimeLiga('')
+  }
+
   async function sincronizarLigas() {
     setSincronizando(true)
     setAvisoLigas('')
@@ -441,7 +571,44 @@ export default function AdminTorneio() {
       return
     }
 
+    if (!id) {
+      const qtdTimes = Object.values(timesCriacao).filter(Boolean).length
+      if (!ligaCriacao) {
+        setErro('Escolha a liga antes de criar o torneio.')
+        setSalvando(false)
+        return
+      }
+      if (qtdTimes === 0) {
+        setErro('Escolha pelo menos um time para o sorteio.')
+        setSalvando(false)
+        return
+      }
+    }
+
     const jogoFinal = form.jogo === 'Outro' ? form.jogoCustom.trim() || 'Outro' : form.jogo
+
+    if (form.formato === 'grupos_mata_mata' && !resumo.fase) {
+      setErro(
+        'A combinação de grupos/classificados não forma um mata-mata válido. O mata-mata precisa de 4, 8 ou 16 classificados — use os atalhos de Copa (FIFA/CONMEBOL) ou ajuste grupos e classificados. Você teria ' +
+          resumo.classificados +
+          ' classificados.',
+      )
+      setSalvando(false)
+      return
+    }
+
+    if (
+      form.formato === 'grupos_mata_mata' &&
+      !form.timesRepetidos &&
+      timesDisponiveis > 0 &&
+      resumo.totalTimes > timesDisponiveis
+    ) {
+      setErro(
+        `Sem times repetidos, a fase de grupos precisa de ${resumo.totalTimes} times distintos, mas só há ${timesDisponiveis} habilitado(s). Habilite mais times na etapa de ligas ou ative "Permitir times repetidos".`,
+      )
+      setSalvando(false)
+      return
+    }
 
     const config = {
       ...configOriginal,
@@ -471,7 +638,6 @@ export default function AdminTorneio() {
       plataforma: form.plataforma,
       jogo: jogoFinal,
       formato: form.formato,
-      status: form.status,
       config,
     }
 
@@ -481,14 +647,13 @@ export default function AdminTorneio() {
     } else {
       resultado = await supabase
         .from('torneios')
-        .insert({ ...registro, organizador_id: usuario?.id ?? null })
+        .insert({ ...registro, status: 'inscricoes', organizador_id: usuario?.id ?? null })
         .select('id')
         .single()
     }
 
-    setSalvando(false)
-
     if (resultado.error) {
+      setSalvando(false)
       if (resultado.error.code === '23505') {
         setErro('Já existe um torneio com esse nome.')
       } else {
@@ -497,11 +662,45 @@ export default function AdminTorneio() {
       return
     }
 
-    navigate('/admin', { state: { aviso: id ? 'Torneio atualizado!' : 'Torneio criado!' } })
+    const torneioId = resultado.data?.id
+    if (!id && torneioId) {
+      const timeIds = Object.keys(timesCriacao).filter((tid) => timesCriacao[tid])
+      await Promise.all([
+        supabase.from('torneio_ligas').upsert({
+          torneio_id: torneioId,
+          liga_id: ligaCriacao.id,
+        }),
+        supabase.from('torneio_times').upsert(
+          timeIds.map((time_id) => ({
+            torneio_id: torneioId,
+            time_id,
+            disponivel: true,
+            selecionado: false,
+          })),
+        ),
+      ])
+      navigate(`/torneio/${torneioId}/sorteio`)
+      return
+    }
+
+    setSalvando(false)
+    navigate('/admin', { state: { aviso: 'Torneio atualizado!' } })
   }
 
   const totalHabilitados = Object.values(habilitados).filter(Boolean).length
   const totalLigasHabilitadas = Object.keys(ligasHabilitadas).length
+  const timesDisponiveis = id
+    ? totalHabilitados
+    : Object.values(timesCriacao).filter(Boolean).length
+  const resumo = analisarFormato(form, timesDisponiveis)
+
+  function aplicarPreset(preset) {
+    atualizar('formato', 'grupos_mata_mata')
+    atualizar('gruposQtd', preset.gruposQtd)
+    atualizar('jogadoresPorGrupo', preset.jogadoresPorGrupo)
+    atualizar('classificadosPorGrupo', preset.classificadosPorGrupo)
+    atualizar('melhoresTerceiros', preset.melhoresTerceiros)
+  }
 
   if (carregando) return <Loading texto="Carregando torneio..." />
 
@@ -509,10 +708,10 @@ export default function AdminTorneio() {
     <div>
       <CabecalhoAdmin
         titulo={id ? 'Editar torneio' : 'Criar torneio'}
-        subtitulo="Configure o campeonato como em um jogo de futebol."
+        subtitulo="Configure o campeonato — a etapa de cada fase é definida pelo sistema."
       />
 
-      <form onSubmit={salvar} className="mt-6 space-y-4">
+      <form onSubmit={salvar} className="entrar mt-6 space-y-4">
         <Secao numero="1" titulo="Identificação" descricao="Dados básicos do campeonato.">
           <Campo rotulo="Nome do torneio">
             <input
@@ -589,6 +788,25 @@ export default function AdminTorneio() {
         </Secao>
 
         <Secao numero="2" titulo="Fase de grupos" descricao="Como os grupos serão formados.">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-arena-muted">
+              Atalhos das regras oficiais (FIFA / CONMEBOL)
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {PRESETS_COPA.map((p) => (
+                <button
+                  key={p.rotulo}
+                  type="button"
+                  onClick={() => aplicarPreset(p)}
+                  className="rounded-full border border-arena-primary/30 bg-arena-primary/10 px-3 py-1.5 text-left transition active:scale-[0.98] hover:bg-arena-primary/20"
+                >
+                  <span className="block text-xs font-bold text-arena-primary">{p.rotulo}</span>
+                  <span className="block text-[10px] text-arena-muted">{p.descricao}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <Campo rotulo="Grupos">
               <Numero valor={form.gruposQtd} onChange={(v) => atualizar('gruposQtd', v)} min={1} max={16} />
@@ -622,6 +840,20 @@ export default function AdminTorneio() {
             </Campo>
           </div>
 
+          <div className="rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2.5 text-xs text-arena-muted">
+            {resumo.totalTimes > 0 && (
+              <p>
+                A fase de grupos precisa de <b className="text-white">{resumo.totalTimes}</b>{' '}
+                jogadores (times) e terá{' '}
+                <b className="text-white">{resumo.classificados}</b> classificados para o mata-mata.
+              </p>
+            )}
+            <p className="mt-1">
+              Regra oficial: grupos de 4 equipes, os dois primeiros avançam (e, se marcado,
+              melhores terceiros).
+            </p>
+          </div>
+
           <Alternar
             rotulo="Ida e volta na fase de grupos"
             descricao="Cada time joga dois jogos contra cada adversário."
@@ -649,6 +881,8 @@ export default function AdminTorneio() {
             valor={form.penaltis}
             onChange={(v) => atualizar('penaltis', v)}
           />
+
+          <ResumoRegras resumo={resumo} />
         </Secao>
 
         <Secao numero="4" titulo="Critérios de desempate" descricao="Ordem aplicada na tabela.">
@@ -691,7 +925,7 @@ export default function AdminTorneio() {
           </div>
         </Secao>
 
-        <Secao numero="5" titulo="Regras e status">
+        <Secao numero="5" titulo="Regras do torneio" descricao="Regras gerais e etapas automáticas.">
           <Alternar
             rotulo="Permitir times repetidos"
             descricao="Dois jogadores podem escolher o mesmo time."
@@ -705,26 +939,185 @@ export default function AdminTorneio() {
             onChange={(v) => atualizar('selecoes', v)}
           />
 
-          <Campo rotulo="Status do torneio">
-            <select className="input" value={form.status} onChange={(e) => atualizar('status', e.target.value)}>
-              {STATUS.map((s) => (
-                <option key={s.valor} value={s.valor} className="bg-arena-surface2">
-                  {s.texto}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          <div className="rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2.5 text-xs text-arena-muted">
+            A etapa atual do campeonato (inscrições, sorteio, grupos, mata-mata...) é definida
+            automaticamente pelo sistema conforme o andamento do torneio.
+          </div>
         </Secao>
 
         <Secao
           numero="6"
-          titulo="Ligas e times"
-          descricao="Ligas habilitadas e times disponíveis para o sorteio."
+          titulo={id ? 'Ligas e times' : 'Liga e times'}
+          descricao={
+            id
+              ? 'Ligas habilitadas e times disponíveis para o sorteio.'
+              : 'Primeiro escolha a liga, depois os times que disputarão o sorteio.'
+          }
         >
           {!id ? (
-            <p className="text-xs text-arena-muted">
-              Salve o torneio antes de escolher ligas e times.
-            </p>
+            <>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2.5">
+                <span className="min-w-0 text-sm">
+                  <span className="font-display font-bold text-arena-primary">
+                    {Object.values(timesCriacao).filter(Boolean).length}
+                  </span>{' '}
+                  times escolhidos
+                  <span className="block text-xs text-arena-muted">
+                    {ligaCriacao ? ligaCriacao.nome : 'Nenhuma liga escolhida'}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="btn-ghost shrink-0 px-3 py-1.5 text-xs"
+                  onClick={sincronizarLigas}
+                  disabled={sincronizando}
+                >
+                  {sincronizando ? 'Sincronizando...' : 'Sincronizar API'}
+                </button>
+              </div>
+
+              {avisoCriacao && <p className="text-xs text-arena-danger">{avisoCriacao}</p>}
+
+              {!ligaCriacao ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-arena-secondary">
+                    Passo 1 — escolha a liga
+                  </p>
+                  {ligas.map((liga) => (
+                    <button
+                      key={liga.id}
+                      type="button"
+                      onClick={() => escolherLigaCriacao(liga)}
+                      className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2.5 text-left transition active:scale-[0.98] hover:border-arena-primary/40"
+                    >
+                      <EmblemaCard liga={liga} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{liga.nome}</span>
+                        <span className="block truncate text-xs text-arena-muted">
+                          {liga.pais ?? 'País não informado'}
+                        </span>
+                      </span>
+                      <svg viewBox="0 0 24 24" className="size-4 text-arena-muted" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </button>
+                  ))}
+
+                  <div className="flex gap-2">
+                    <input
+                      className="input min-w-0 flex-1"
+                      placeholder="Cadastrar liga manual..."
+                      value={novaLiga}
+                      onChange={(e) => setNovaLiga(e.target.value)}
+                    />
+                    <button type="button" className="btn-ghost shrink-0 px-4" onClick={criarLigaManual}>
+                      Criar
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-ghost w-full text-center"
+                    onClick={sincronizarLigas}
+                    disabled={sincronizando}
+                  >
+                    {sincronizando ? 'Sincronizando...' : 'Sincronizar ligas da API'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 rounded-xl border border-arena-primary/40 bg-arena-primary/10 px-3 py-2.5">
+                    <EmblemaCard liga={ligaCriacao} grande />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold text-arena-primary">
+                        {ligaCriacao.nome}
+                      </span>
+                      <span className="block truncate text-xs text-arena-muted">
+                        {ligaCriacao.pais ?? ''} • clique abaixo para trocar
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-ghost shrink-0 px-3 py-1.5 text-xs"
+                      onClick={() => escolherLigaCriacao(ligaCriacao)}
+                    >
+                      Trocar
+                    </button>
+                  </div>
+
+                  <div className="pt-1">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-arena-secondary">
+                      Passo 2 — escolha os times
+                    </p>
+                  </div>
+
+                  {carregandoTimesLiga ? (
+                    <p className="text-xs text-arena-muted">Carregando times...</p>
+                  ) : timesLiga.length === 0 ? (
+                    <p className="text-xs text-arena-muted">Nenhum time cadastrado nesta liga ainda.</p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-ghost w-full text-center"
+                        onClick={() => marcarTodosCriacao(!timesLiga.every((t) => timesCriacao[t.id]))}
+                      >
+                        {timesLiga.every((t) => timesCriacao[t.id])
+                          ? 'Desmarcar todos'
+                          : 'Marcar todos os times'}
+                      </button>
+                      <div className="space-y-1 rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2">
+                        {timesLiga.map((time) => {
+                          const marcado = Boolean(timesCriacao[time.id])
+                          return (
+                            <button
+                              key={time.id}
+                              type="button"
+                              onClick={() => alternarTimeCriacao(time)}
+                              className="flex w-full items-center gap-3 py-1.5 text-left"
+                            >
+                              <span
+                                className={`flex size-5 shrink-0 items-center justify-center rounded border ${
+                                  marcado ? 'border-arena-primary bg-arena-primary text-black' : 'border-white/20'
+                                }`}
+                              >
+                                {marcado && (
+                                  <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="3">
+                                    <path d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </span>
+                              <span className="flex min-w-0 items-center gap-2">
+                                {time.escudo_url && (
+                                  <img
+                                    src={time.escudo_url}
+                                    alt=""
+                                    loading="lazy"
+                                    className="size-5 shrink-0 rounded bg-white/10 object-contain p-0.5"
+                                  />
+                                )}
+                                <span className="truncate text-sm">{time.nome}</span>
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex gap-2">
+                    <input
+                      className="input min-w-0 flex-1"
+                      placeholder="Novo time manual nesta liga..."
+                      value={novoTimeLiga}
+                      onChange={(e) => setNovoTimeLiga(e.target.value)}
+                    />
+                    <button type="button" className="btn-ghost shrink-0 px-4" onClick={criarTimeManualLiga}>
+                      Criar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <>
               <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2.5">
@@ -776,28 +1169,14 @@ export default function AdminTorneio() {
                     (timeId) => habilitados[timeId] && timeLiga[timeId] === liga.id,
                   ).length
                   return (
-                    <div
-                      key={liga.id}
-                      className="rounded-xl border border-white/10 bg-arena-surface2"
-                    >
+                    <div key={liga.id} className="rounded-xl border border-white/10 bg-arena-surface2">
                       <div className="flex items-center gap-2 px-3 py-2">
                         <button
                           type="button"
                           onClick={() => alternarLiga(liga)}
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
-                          {liga.emblema_url ? (
-                            <img
-                              src={liga.emblema_url}
-                              alt=""
-                              loading="lazy"
-                              className="size-7 shrink-0 rounded bg-white/10 object-contain p-0.5"
-                            />
-                          ) : (
-                            <span className="flex size-7 shrink-0 items-center justify-center rounded bg-white/10 text-[10px] font-bold text-arena-muted">
-                              {(liga.pais ?? '?').slice(0, 2).toUpperCase()}
-                            </span>
-                          )}
+                          <EmblemaCard liga={liga} />
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-medium">
                               {liga.nome}

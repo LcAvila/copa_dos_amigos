@@ -31,11 +31,18 @@ const ESTILOS = {
 
 export default function StatusBadge({ status }) {
   const estilo = ESTILOS[status] ?? ESTILOS.configuracao
+  const ativo = ['inscricoes', 'sorteio', 'grupos', 'mata_mata'].includes(status)
 
   return (
     <span
-      className={`recorte inline-flex items-center font-display px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${estilo.classes}`}
+      className={`recorte inline-flex items-center gap-1.5 font-display px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${estilo.classes}`}
     >
+      {ativo && (
+        <span className="relative flex size-1.5">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-75" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-current opacity-40" />
+        </span>
+      )}
       {estilo.texto}
     </span>
   )

@@ -5,6 +5,17 @@ import { useAdmin } from '../hooks/useAdmin'
 import CabecalhoAdmin from '../components/CabecalhoAdmin'
 import Loading from '../components/Loading'
 import StatusBadge from '../components/StatusBadge'
+import { Trofeu } from '../components/Artes'
+
+function proximaAcao(t) {
+  if (t.status === 'grupos' || t.status === 'mata_mata') {
+    return { texto: 'Tabela', to: `/torneio/${t.id}/tabela` }
+  }
+  if (t.status === 'finalizado') {
+    return { texto: 'Classificação', to: `/torneio/${t.id}/classificacao` }
+  }
+  return { texto: 'Sorteio', to: `/torneio/${t.id}/sorteio` }
+}
 
 export default function Admin() {
   const navigate = useNavigate()
@@ -12,6 +23,8 @@ export default function Admin() {
   const { sair } = useAdmin()
 
   const [torneios, setTorneios] = useState([])
+  const [particip, setParticip] = useState({})
+  const [qtdTimes, setQtdTimes] = useState({})
   const [totalPerfis, setTotalPerfis] = useState(0)
   const [carregando, setCarregando] = useState(true)
   const [aviso, setAviso] = useState(location.state?.aviso ?? '')
@@ -23,11 +36,26 @@ export default function Admin() {
   }, [aviso])
 
   const buscarTorneios = useCallback(async () => {
-    const [torneiosRes, perfisRes] = await Promise.all([
+    const [torneiosRes, perfisRes, participantesRes, timesRes] = await Promise.all([
       supabase.from('torneios').select('*').order('criado_em', { ascending: false }),
       supabase.from('perfis').select('id', { count: 'exact', head: true }),
+      supabase.from('participantes').select('torneio_id'),
+      supabase.from('torneio_times').select('torneio_id').eq('disponivel', true),
     ])
-    return { torneios: torneiosRes.data ?? [], perfis: perfisRes.count ?? 0 }
+    const porParticipante = {}
+    const porTime = {}
+    for (const linha of participantesRes.data ?? []) {
+      porParticipante[linha.torneio_id] = (porParticipante[linha.torneio_id] ?? 0) + 1
+    }
+    for (const linha of timesRes.data ?? []) {
+      porTime[linha.torneio_id] = (porTime[linha.torneio_id] ?? 0) + 1
+    }
+    return {
+      torneios: torneiosRes.data ?? [],
+      perfis: perfisRes.count ?? 0,
+      porParticipante,
+      porTime,
+    }
   }, [])
 
   useEffect(() => {
@@ -36,6 +64,8 @@ export default function Admin() {
       if (!ativo) return
       setTorneios(resultado.torneios)
       setTotalPerfis(resultado.perfis)
+      setParticip(resultado.porParticipante)
+      setQtdTimes(resultado.porTime)
       setCarregando(false)
     })
     return () => {
@@ -62,7 +92,7 @@ export default function Admin() {
         }
       />
 
-      <div className="mt-6 space-y-3">
+      <div className="entrar mt-6 space-y-3">
         {aviso && (
           <div className="card border-arena-primary/40 text-sm text-arena-primary">{aviso}</div>
         )}
@@ -88,7 +118,8 @@ export default function Admin() {
       </div>
 
       <div className="mt-8">
-        <h2 className="font-display text-sm font-bold uppercase tracking-widest text-arena-muted">
+        <h2 className="flex items-center gap-2 font-display text-sm font-bold uppercase tracking-widest text-arena-muted">
+          <Trofeu className="size-5 animate-[boiar_3s_ease-in-out_infinite]" />
           Torneios
         </h2>
 
@@ -102,35 +133,54 @@ export default function Admin() {
         )}
 
         {!carregando && torneios.length > 0 && (
-          <div className="mt-4 space-y-3">
-            {torneios.map((t) => (
-              <div key={t.id} className="card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-display text-lg font-bold leading-tight truncate">{t.nome}</p>
-                    <p className="mt-0.5 text-xs text-arena-muted truncate">
-                      {[t.plataforma, t.jogo, `${t.mes}/${t.ano}`].filter(Boolean).join(' • ')}
-                    </p>
+          <div className="entrar mt-4 space-y-3">
+            {torneios.map((t) => {
+              const acao = proximaAcao(t)
+              const meta = [t.plataforma, t.jogo].filter(Boolean).join(' • ')
+              return (
+                <div key={t.id} className="card !p-0 overflow-hidden">
+                  <div className="relative overflow-hidden bg-gradient-to-r from-arena-surface2 to-arena-surface p-4 pb-3">
+                    <span className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-arena-primary/5" />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-display text-lg font-bold leading-tight truncate">{t.nome}</p>
+                        <p className="mt-0.5 text-xs text-arena-muted truncate">
+                          {meta}
+                          {t.mes ? ` • ${t.mes}/${t.ano}` : ''}
+                        </p>
+                        <p className="mt-1.5 text-[11px] text-arena-muted">
+                          {particip[t.id] ?? 0}{' '}
+                          {particip[t.id] === 1 ? 'jogador' : 'jogadores'} •{' '}
+                          {qtdTimes[t.id] ?? 0} {qtdTimes[t.id] === 1 ? 'time' : 'times'} na roleta
+                        </p>
+                      </div>
+                      <StatusBadge status={t.status} />
+                    </div>
                   </div>
-                  <StatusBadge status={t.status} />
-                </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Link to={`/admin/torneio/${t.id}`} className="btn-ghost !px-3 !py-2 text-xs">
-                    Editar torneio
-                  </Link>
-                  <Link to={`/torneio/${t.id}/sorteio`} className="btn-ghost !px-3 !py-2 text-xs">
-                    Sorteio
-                  </Link>
-                  <Link to={`/torneio/${t.id}/tabela`} className="btn-ghost !px-3 !py-2 text-xs">
-                    Tabela
-                  </Link>
-                  <Link to={`/torneio/${t.id}`} className="btn-ghost !px-3 !py-2 text-xs">
-                    Ver como jogador
-                  </Link>
+                  <div className="grid grid-cols-3 gap-1.5 border-t border-white/10 p-3">
+                    <Link
+                      to={acao.to}
+                      className="btn-primary !px-2 text-center text-xs"
+                    >
+                      {acao.texto}
+                    </Link>
+                    <Link
+                      to={`/admin/torneio/${t.id}`}
+                      className="btn-ghost !px-2 text-center text-xs"
+                    >
+                      Editar
+                    </Link>
+                    <Link
+                      to={`/torneio/${t.id}`}
+                      className="btn-ghost !px-2 text-center text-xs"
+                    >
+                      Ver
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
