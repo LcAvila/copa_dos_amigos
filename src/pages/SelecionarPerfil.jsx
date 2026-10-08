@@ -261,7 +261,7 @@ export default function SelecionarPerfil() {
       {etapa === 'perfis' && (
         <>
           <CampoIntro
-            frase="A ARENA É SUA,"
+            frase="A COPA É SUA,"
             palavras={['JOGADOR', 'CAMPEÃO', 'ARTILHEIRO', 'GOAT']}
             rotulo="Jogadores"
             subtitulo="Escolha o seu perfil para entrar."

@@ -16,11 +16,11 @@ function Logo() {
       />
       <div className="relative flex items-center gap-4">
         <div className="recorte flex size-14 shrink-0 items-center justify-center bg-gradient-to-br from-[#ffea66] to-[#eed12b] text-black animate-[brilhoBorda_3s_ease-in-out_infinite]">
-          <span className="font-display text-2xl font-extrabold leading-none">CA</span>
+          <span className="font-display text-2xl font-extrabold leading-none">CDA</span>
         </div>
         <div className="min-w-0">
           <h1 className="font-display text-3xl font-extrabold leading-none tracking-wide">
-            COPA <span className="text-arena-primary">ARENA</span>
+            COPA DOS <span className="text-arena-primary">AMIGOS</span>
           </h1>
           <p className="mt-1.5 font-display text-[11px] font-bold uppercase tracking-[0.22em] text-arena-secondary">
             Campeonatos entre amigos
@@ -92,6 +92,7 @@ export default function Home() {
   const [qtdTimes, setQtdTimes] = useState({})
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
+  const [recarga, setRecarga] = useState(0)
 
   const buscarTorneios = useCallback(async () => {
     const [rTorneios, rParticipantes, rTimes] = await Promise.all([
@@ -128,7 +129,21 @@ export default function Home() {
     return () => {
       ativo = false
     }
-  }, [buscarTorneios])
+  }, [buscarTorneios, recarga])
+
+  useEffect(() => {
+    const atualizar = () => setRecarga((r) => r + 1)
+    const canal = supabase
+      .channel('home:campeonatos')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'torneios' }, atualizar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'participantes' }, atualizar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'torneio_times' }, atualizar)
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(canal)
+    }
+  }, [])
 
   const tentarNovamente = async () => {
     setCarregando(true)

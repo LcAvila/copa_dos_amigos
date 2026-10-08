@@ -276,6 +276,12 @@ begin
 exception when duplicate_object or undefined_object then null;
 end $$;
 
+do $$
+begin
+  alter publication supabase_realtime add table torneio_times;
+exception when duplicate_object or undefined_object then null;
+end $$;
+
 -- ------------------------------------------------------------
 -- Storage: buckets de avatar e capa
 -- ------------------------------------------------------------

@@ -58,4 +58,13 @@ funcionando com cadastro manual de ligas e times.
 - Jogadores: criados pelo administrador.
 - Visitantes: abrem o link e escolhem um perfil para visualizar.
 - Perfil com PIN: pode editar foto, capa, biografia e time do coração.
-"# copa_dos_amigos" 
+
+## Testes
+
+```bash
+npm test
+```
+
+Roda os testes unitários das regras puras (`sorteio`, `classificacao`,
+`tabela`, `mataMata`, `regras`) com o runner nativo do Node.
+

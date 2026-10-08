@@ -147,6 +147,7 @@ export default function Sorteio() {
     ehAdmin,
     repetir: Boolean(torneio?.config?.regras?.timesRepetidos),
   }
+  const loteDisparadoRef = useRef(false)
 
   const sincronizarSelecionados = useCallback(
     async (timeIds) => {
@@ -170,6 +171,38 @@ export default function Sorteio() {
     },
     [id],
   )
+
+  // Sorteio executado no servidor (Edge Function): a gravação não depende de
+  // a aba do administrador continuar aberta.
+  const executarSorteioNoServidor = useCallback(
+    async (acao) => {
+      const { error } = await supabase.functions.invoke('sorteio', {
+        body: { torneio_id: id, acao },
+      })
+      if (!error) return { ok: true }
+
+      let mensagem = 'Não foi possível executar o sorteio no servidor.'
+      if (error.name === 'FunctionsRelayError' || error.name === 'FunctionsFetchError') {
+        mensagem = 'Sem conexão com o servidor do sorteio. Verifique sua internet.'
+      } else {
+        try {
+          const corpo = await error.context?.json?.()
+          if (corpo?.erro) mensagem = corpo.erro
+        } catch {
+          // resposta sem corpo legível
+        }
+      }
+      return { erro: mensagem }
+    },
+    [id],
+  )
+
+  // Conclui o sorteio pelo servidor e recarrega a tela (status vira "concluido").
+  const concluirSorteio = useCallback(async () => {
+    const resultado = await executarSorteioNoServidor('concluir')
+    if (!resultado.erro) setRecarga((r) => r + 1)
+    return resultado
+  }, [executarSorteioNoServidor])
 
   const salvarResultado = useCallback(
     (config, status) => {
@@ -198,27 +231,15 @@ export default function Sorteio() {
       if (!inicio || agoraMs < inicio) return
 
       if (ik.modo === 'lote') {
-        if (pl.some((p) => p.time_id)) return
-        const baralhado = embaralhar(pk)
-        const linhas = pl.map((participante, indice) => ({
-          id: participante.id,
-          torneio_id: id,
-          perfil_id: participante.perfil_id,
-          time_id: baralhado[indice % baralhado.length].time_id,
-          ordem_sorteio: indice + 1,
-        }))
-        supabase
-          .from('participantes')
-          .upsert(linhas, { onConflict: 'id' })
-          .then(async ({ error }) => {
-            if (error) return
-            await sincronizarSelecionados(linhas.map((l) => l.time_id))
-            await salvarResultado(
-              { ...tk.config, sorteio: { ...ik, status: 'concluido', realizadoEm: new Date().toISOString() } },
-              undefined,
-            )
-            setRecarga((r) => r + 1)
-          })
+        if (loteDisparadoRef.current || pl.some((p) => p.time_id)) return
+        loteDisparadoRef.current = true
+        executarSorteioNoServidor('lote').then((resultado) => {
+          if (resultado.erro) {
+            loteDisparadoRef.current = false
+            setErro(resultado.erro)
+          }
+          setRecarga((r) => r + 1)
+        })
         return
       }
 
@@ -251,7 +272,7 @@ export default function Sorteio() {
     }, 700)
 
     return () => clearInterval(timer)
-  }, [id, salvarResultado, sincronizarSelecionados])
+  }, [id, salvarResultado, sincronizarSelecionados, executarSorteioNoServidor])
 
   function recarregar() {
     setRecarga((r) => r + 1)
@@ -499,6 +520,7 @@ export default function Sorteio() {
         info={info}
         ehAdmin={ehAdmin}
         onCancelarAgendamento={cancelarAgendamento}
+        onConcluir={concluirSorteio}
       />
     )
   }

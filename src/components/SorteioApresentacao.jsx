@@ -55,13 +55,25 @@ export default function SorteioApresentacao({
   info,
   ehAdmin = false,
   onCancelarAgendamento = null,
+  onConcluir = null,
 }) {
   const [agora, setAgora] = useState(() => Date.now())
+  const [concluindo, setConcluindo] = useState(false)
+  const [erroConcluir, setErroConcluir] = useState('')
 
   useEffect(() => {
     const timer = setInterval(() => setAgora(Date.now()), 500)
     return () => clearInterval(timer)
   }, [])
+
+  async function concluirAgora() {
+    if (!onConcluir || concluindo) return
+    setConcluindo(true)
+    setErroConcluir('')
+    const resultado = await onConcluir()
+    setConcluindo(false)
+    if (resultado?.erro) setErroConcluir(resultado.erro)
+  }
 
   const agoraMs = agora
   const tempo = info?.tempoPorPerfil ?? 5
@@ -135,6 +147,20 @@ export default function SorteioApresentacao({
             </span>
           ))}
         </div>
+
+        {ehAdmin && onConcluir && (
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={concluirAgora}
+              disabled={concluindo}
+              className="btn-primary text-sm disabled:opacity-60"
+            >
+              {concluindo ? 'Sorteando no servidor...' : 'Sortear agora (sem animação)'}
+            </button>
+            {erroConcluir && <p className="text-xs text-arena-danger">{erroConcluir}</p>}
+          </div>
+        )}
       </div>
     )
   }
@@ -153,6 +179,22 @@ export default function SorteioApresentacao({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 overflow-y-auto bg-arena-bg px-5 py-10 text-center">
+      {ehAdmin && onConcluir && (
+        <div className="absolute right-4 top-4 flex flex-col items-end gap-1.5">
+          <button
+            type="button"
+            onClick={concluirAgora}
+            disabled={concluindo}
+            className="rounded-xl border border-white/15 bg-arena-surface px-3 py-2 text-xs font-bold text-arena-primary transition active:scale-95 disabled:opacity-60"
+          >
+            {concluindo ? 'Concluindo...' : 'Concluir agora'}
+          </button>
+          {erroConcluir && (
+            <p className="max-w-[14rem] text-right text-[11px] text-arena-danger">{erroConcluir}</p>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <Bola className="size-5 animate-[girarBola_4s_linear_infinite]" />
         <p className="font-display text-[11px] font-bold uppercase tracking-[0.2em] text-arena-secondary">
