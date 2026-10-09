@@ -110,3 +110,40 @@ export function calcularClassificacao(participantes, partidas, criterios = ['sal
 
   return [...stats.values()].sort(comparar)
 }
+
+// Artilharia do campeonato inteiro (todas as fases). Considera apenas
+// partidas finalizadas com participantes conhecidos. Retorna lista
+// ordenada [{ participante_id, gols }]. O empate é desempatado
+// por nome do perfil (A-Z) para ficar determinístico.
+export function calcularArtilheiros(participantes, partidas) {
+  const porId = new Map(participantes.map((p) => [p.id, p]))
+  const gols = new Map()
+
+  for (const p of participantes) {
+    gols.set(p.id, 0)
+  }
+
+  for (const j of partidas) {
+    if (!j.finalizada) continue
+    if (j.casa_id && typeof j.gols_casa === 'number' && gols.has(j.casa_id)) {
+      gols.set(j.casa_id, gols.get(j.casa_id) + j.gols_casa)
+    }
+    if (j.fora_id && typeof j.gols_fora === 'number' && gols.has(j.fora_id)) {
+      gols.set(j.fora_id, gols.get(j.fora_id) + j.gols_fora)
+    }
+  }
+
+  const lista = [...gols.entries()].map(([participante_id, golsContador]) => ({
+    participante_id,
+    gols: golsContador,
+  }))
+
+  lista.sort((a, b) => {
+    if (b.gols !== a.gols) return b.gols - a.gols
+    const nomeA = porId.get(a.participante_id)?.perfil?.nome ?? ''
+    const nomeB = porId.get(b.participante_id)?.perfil?.nome ?? ''
+    return nomeA.localeCompare(nomeB, 'pt-BR')
+  })
+
+  return lista
+}

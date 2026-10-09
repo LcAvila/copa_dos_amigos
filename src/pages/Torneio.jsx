@@ -188,6 +188,7 @@ export default function Torneio() {
   }
 
   const grupos = [...new Set(participantes.map((p) => p.grupo?.trim()).filter(Boolean))].sort()
+  const temGrupos = grupos.length > 0
   const semGrupo = participantes.filter((p) => !p.grupo?.trim())
   const infoSorteio = torneio.config?.sorteio
   const campeao = torneio.config?.campeao
@@ -328,15 +329,10 @@ export default function Torneio() {
         </div>
       )}
 
-      <div className="entrar mt-4 grid grid-cols-3 gap-2">
-        <Link to={`/torneio/${id}/classificacao`} className="btn-ghost text-center text-sm">
+      <div className="entrar mt-4 grid grid-cols-2 gap-2">
+        <Link to={`/torneio/${id}`} className="btn-primary text-center text-sm">
           <span className="flex items-center justify-center gap-1.5">
-            <Bola className="size-4" /> Classificação
-          </span>
-        </Link>
-        <Link to={`/torneio/${id}/tabela`} className="btn-primary text-center text-sm">
-          <span className="flex items-center justify-center gap-1.5">
-            <Bola className="size-4" /> Tabela
+            <Bola className="size-4" /> Tabela de jogos
           </span>
         </Link>
         <Link to={`/torneio/${id}/sorteio`} className="btn-ghost text-center text-sm">
@@ -364,7 +360,7 @@ export default function Torneio() {
             </p>
             {partidas.length > 0 && (
               <Link
-                to={`/torneio/${id}/tabela`}
+                to={`/torneio/${id}`}
                 className="text-[11px] font-bold uppercase tracking-wider text-arena-secondary active:opacity-70"
               >
                 Tabela completa →
@@ -384,7 +380,7 @@ export default function Torneio() {
             {partidas.length > 0 && proximas.length === 0 && (
               <div className="card text-center">
                 <p className="font-display text-lg font-bold">Todos os jogos foram disputados</p>
-                <Link to={`/torneio/${id}/tabela`} className="btn-ghost mt-4 inline-block">
+                <Link to={`/torneio/${id}`} className="btn-ghost mt-4 inline-block">
                   Ver resultados
                 </Link>
               </div>
@@ -467,7 +463,7 @@ export default function Torneio() {
         {semGrupo.length > 0 && (
           <div className="entrar space-y-2">
             <p className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-arena-muted">
-              Aguardando sorteio
+              {temGrupos ? 'Aguardando sorteio' : 'Participantes'}
             </p>
             {semGrupo.map((participante) => (
               <div
@@ -475,7 +471,7 @@ export default function Torneio() {
                 className="card flex items-center gap-3 !p-3"
               >
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/5 font-display text-xs font-bold text-arena-muted">
-                  ?
+                  {temGrupos ? '?' : participante.ordem_sorteio ?? '–'}
                 </span>
                 <Avatar url={participante.perfil?.avatar_url} nome={participante.perfil?.nome} />
                 <div className="min-w-0 flex-1">

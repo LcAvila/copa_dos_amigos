@@ -32,7 +32,8 @@ export default function App() {
               <Route path="/admin/torneio/:id" element={<RotaAdmin><AdminTorneio /></RotaAdmin>} />
               <Route path="/admin/perfis" element={<RotaAdmin><AdminPerfis /></RotaAdmin>} />
               <Route path="/perfis" element={<SelecionarPerfil />} />
-              <Route path="/torneio/:id" element={<Torneio />} />
+              <Route path="/torneio/:id" element={<Tabela />} />
+              <Route path="/torneio/:id/resumo" element={<Torneio />} />
               <Route path="/torneio/:id/sorteio" element={<Sorteio />} />
               <Route path="/torneio/:id/tabela" element={<Tabela />} />
               <Route path="/torneio/:id/classificacao" element={<Classificacao />} />

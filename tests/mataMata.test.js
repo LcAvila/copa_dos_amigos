@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   classificadosParaMataMata,
   montarChaveMataMata,
+  montarChaveDireta,
   vencedorDeJogo,
   perdedorDeJogo,
   montarProximaFase,
@@ -96,6 +97,32 @@ test('montarChaveMataMata recusa tamanhos fora de 4, 8 ou 16', () => {
     const lista = Array.from({ length: n }, (_, i) => ({ id: `p${i + 1}` }))
     assert.equal(montarChaveMataMata(lista), null, `n=${n} deve ser recusado`)
   }
+})
+
+test('montarChaveDireta semeia todos os inscritos pela ordem do sorteio', () => {
+  const participantes = [
+    { id: 'p3', ordem_sorteio: 3 },
+    { id: 'p1', ordem_sorteio: 1 },
+    { id: 'p4', ordem_sorteio: 4 },
+    { id: 'p2', ordem_sorteio: 2 },
+  ]
+  const chave = montarChaveDireta(participantes)
+
+  assert.equal(chave.length, 2)
+  assert.equal(chave[0].fase, 'semi')
+  assert.deepEqual(
+    chave.map((g) => [g.casa_id, g.fora_id]),
+    [
+      ['p1', 'p4'],
+      ['p2', 'p3'],
+    ],
+  )
+})
+
+test('montarChaveDireta monta quartas com 8 e recusa outros tamanhos', () => {
+  const oito = Array.from({ length: 8 }, (_, i) => ({ id: `p${i + 1}`, ordem_sorteio: i + 1 }))
+  assert.equal(montarChaveDireta(oito)[0].fase, 'quartas')
+  assert.equal(montarChaveDireta([{ id: 'a' }, { id: 'b' }, { id: 'c' }]), null)
 })
 
 test('vencedorDeJogo decide por placar, pênaltis e ignora não finalizado', () => {

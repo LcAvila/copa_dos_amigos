@@ -18,7 +18,7 @@ function Inicial({ nome, className = 'size-14 text-lg' }) {
 
 function AvatarPerfil({ perfil, time, className = 'size-14', escudoClassName = 'size-7' }) {
   return (
-    <div className="flex items-end gap-1 shrink-0">
+    <div className="relative z-10 flex items-end gap-1 shrink-0">
       {perfil.avatar_url ? (
         <img
           src={perfil.avatar_url}
@@ -78,7 +78,7 @@ function ItemPerfil({ perfil, tempoEspera = 0, onSelecionar, etiqueta }) {
           className="size-16"
           escudoClassName="size-8"
         />
-        <div className="min-w-0 flex-1">
+        <div className="relative z-10 min-w-0 flex-1">
           <p className="font-display text-xl font-extrabold leading-tight truncate">{perfil.nome}</p>
           <p className="mt-0.5 text-xs text-arena-muted truncate">
             {perfil.time_coracao?.nome ?? 'Sem time do coração'}

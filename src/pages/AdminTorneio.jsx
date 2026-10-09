@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAdmin } from '../hooks/useAdmin'
 import CabecalhoAdmin from '../components/CabecalhoAdmin'
 import Loading from '../components/Loading'
+import StatusBadge from '../components/StatusBadge'
 import { analisarFormato, PRESETS_COPA } from '../lib/regras'
 
 const MESES = [
@@ -23,9 +24,21 @@ const JOGOS = [
 ]
 
 const FORMATOS = [
-  { valor: 'grupos_mata_mata', texto: 'Grupos + Mata-mata' },
-  { valor: 'todos_contra_todos', texto: 'Todos contra todos' },
-  { valor: 'mata_mata', texto: 'Mata-mata direto' },
+  {
+    valor: 'grupos_mata_mata',
+    texto: 'Grupos + Mata-mata',
+    descricao: 'Fase de grupos em round-robin e eliminatórias a partir dos classificados.',
+  },
+  {
+    valor: 'todos_contra_todos',
+    texto: 'Todos contra todos',
+    descricao: 'Tabela única — todos se enfrentam e o líder da classificação é o campeão.',
+  },
+  {
+    valor: 'mata_mata',
+    texto: 'Mata-mata direto',
+    descricao: 'Chave eliminatória direta com 4, 8 ou 16 jogadores.',
+  },
 ]
 
 const CRITERIOS = [
@@ -53,9 +66,6 @@ function formInicial(torneio, configOriginal) {
       classificadosPorGrupo: 2,
       melhoresTerceiros: 0,
       gruposIdaVolta: false,
-      mmIdaVolta: false,
-      prorrogacao: true,
-      penaltis: true,
       desempate: ['saldo_gols', 'gols_pro'],
       timesRepetidos: false,
       selecoes: false,
@@ -78,9 +88,6 @@ function formInicial(torneio, configOriginal) {
     classificadosPorGrupo: cfg.grupos?.classificadosPorGrupo ?? 2,
     melhoresTerceiros: cfg.grupos?.melhoresTerceiros ?? 0,
     gruposIdaVolta: cfg.grupos?.idaEVolta ?? false,
-    mmIdaVolta: cfg.mataMata?.idaEVolta ?? false,
-    prorrogacao: cfg.mataMata?.prorrogacao ?? true,
-    penaltis: cfg.mataMata?.penaltis ?? true,
     desempate: cfg.desempate ?? ['saldo_gols', 'gols_pro'],
     timesRepetidos: cfg.regras?.timesRepetidos ?? false,
     selecoes: cfg.regras?.selecoes ?? false,
@@ -219,10 +226,16 @@ export default function AdminTorneio() {
   const { usuario } = useAdmin()
 
   const [carregando, setCarregando] = useState(Boolean(id))
+  const [torneio, setTorneio] = useState(null)
   const [configOriginal, setConfigOriginal] = useState({})
   const [form, setForm] = useState(() => formInicial(null, null))
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
+
+  const [apagarAberto, setApagarAberto] = useState(false)
+  const [apagarConfirmacao, setApagarConfirmacao] = useState('')
+  const [apagando, setApagando] = useState(false)
+  const [erroApagar, setErroApagar] = useState('')
 
   const [ligas, setLigas] = useState([])
   const [ligasHabilitadas, setLigasHabilitadas] = useState({})
@@ -258,6 +271,7 @@ export default function AdminTorneio() {
         if (error || !data) {
           setErro('Torneio não encontrado.')
         } else {
+          setTorneio(data)
           setConfigOriginal(data.config ?? {})
           setForm(formInicial(data, data.config ?? {}))
         }
@@ -619,11 +633,7 @@ export default function AdminTorneio() {
         melhoresTerceiros: Number(form.melhoresTerceiros),
         idaEVolta: form.gruposIdaVolta,
       },
-      mataMata: {
-        idaEVolta: form.mmIdaVolta,
-        prorrogacao: form.prorrogacao,
-        penaltis: form.penaltis,
-      },
+      mataMata: {},
       desempate: CRITERIOS.filter((c) => form.desempate.includes(c.valor)).map((c) => c.valor),
       regras: {
         timesRepetidos: form.timesRepetidos,
@@ -631,10 +641,11 @@ export default function AdminTorneio() {
       },
     }
 
+    const agoraCriacao = new Date()
     const registro = {
       nome,
-      mes: form.mes,
-      ano: Number(form.ano),
+      mes: id ? torneio?.mes ?? form.mes : MESES[agoraCriacao.getMonth()],
+      ano: id ? torneio?.ano ?? Number(form.ano) : agoraCriacao.getFullYear(),
       plataforma: form.plataforma,
       jogo: jogoFinal,
       formato: form.formato,
@@ -694,12 +705,55 @@ export default function AdminTorneio() {
     : Object.values(timesCriacao).filter(Boolean).length
   const resumo = analisarFormato(form, timesDisponiveis)
 
+  const ehGrupos = form.formato === 'grupos_mata_mata'
+  const ehMataDireto = form.formato === 'mata_mata'
+  const ehTodosContraTodos = form.formato === 'todos_contra_todos'
+  const descricaoFormato = FORMATOS.find((f) => f.valor === form.formato)?.descricao
+
+  let contadorSecao = 0
+  const numeros = { identificacao: ++contadorSecao }
+  if (ehGrupos) numeros.grupos = ++contadorSecao
+  if (!ehTodosContraTodos) numeros.mataMata = ++contadorSecao
+  if (ehTodosContraTodos) numeros.disputa = ++contadorSecao
+  if (!ehMataDireto) numeros.desempate = ++contadorSecao
+  numeros.regras = ++contadorSecao
+  numeros.ligas = ++contadorSecao
+
   function aplicarPreset(preset) {
     atualizar('formato', 'grupos_mata_mata')
     atualizar('gruposQtd', preset.gruposQtd)
     atualizar('jogadoresPorGrupo', preset.jogadoresPorGrupo)
     atualizar('classificadosPorGrupo', preset.classificadosPorGrupo)
     atualizar('melhoresTerceiros', preset.melhoresTerceiros)
+  }
+
+  function abrirApagar() {
+    setApagarConfirmacao('')
+    setErroApagar('')
+    setApagando(false)
+    setApagarAberto(true)
+  }
+  function fecharApagar() {
+    setApagarAberto(false)
+    setApagarConfirmacao('')
+    setErroApagar('')
+    setApagando(false)
+  }
+  async function confirmarApagar() {
+    if (!id || !torneio) return
+    if (apagarConfirmacao.trim() !== torneio.nome) {
+      setErroApagar('Digite o nome do torneio exatamente como aparece para confirmar.')
+      return
+    }
+    setApagando(true)
+    setErroApagar('')
+    const { error } = await supabase.from('torneios').delete().eq('id', id)
+    setApagando(false)
+    if (error) {
+      setErroApagar(error.message || 'Não foi possível apagar o torneio. Tente novamente.')
+      return
+    }
+    navigate('/admin', { state: { aviso: `Torneio "${torneio.nome}" foi apagado.` } })
   }
 
   if (carregando) return <Loading texto="Carregando torneio..." />
@@ -711,8 +765,78 @@ export default function AdminTorneio() {
         subtitulo="Configure o campeonato — a etapa de cada fase é definida pelo sistema."
       />
 
+      {id && torneio && (
+        <div className="entrar mt-6 space-y-4">
+          <div className="card space-y-4 !p-4 overflow-hidden">
+            <div className="relative">
+              <span className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-arena-primary/5" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-display text-lg font-bold leading-tight truncate">{torneio.nome}</p>
+                  <p className="mt-0.5 text-xs text-arena-muted truncate">
+                    {[torneio.plataforma, torneio.jogo].filter(Boolean).join(' • ')}
+                    {torneio.mes ? ` • ${torneio.mes}/${torneio.ano}` : ''}
+                  </p>
+                </div>
+                <StatusBadge status={torneio.status} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Link
+                to={`/torneio/${id}/tabela`}
+                className="btn-ghost !px-2 text-center text-xs flex items-center justify-center gap-1.5"
+              >
+                <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <path d="M3 9h18" />
+                  <path d="M9 4v16" />
+                </svg>
+                Tabela de jogos
+              </Link>
+              <Link
+                to={`/torneio/${id}/classificacao`}
+                className="btn-ghost !px-2 text-center text-xs flex items-center justify-center gap-1.5"
+              >
+                <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21c0-4 4-7 8-7s8 3 8 7" />
+                </svg>
+                Artilharia
+              </Link>
+              <Link
+                to={`/torneio/${id}`}
+                className="btn-ghost !px-2 text-center text-xs flex items-center justify-center gap-1.5"
+              >
+                <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                Visão pública
+              </Link>
+              <button
+                type="button"
+                onClick={abrirApagar}
+                className="recorte px-3 py-3 text-xs font-bold uppercase tracking-wider text-center border border-arena-danger/40 bg-arena-danger/10 text-arena-danger transition hover:bg-arena-danger/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                </svg>
+                Apagar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={salvar} className="entrar mt-6 space-y-4">
-        <Secao numero="1" titulo="Identificação" descricao="Dados básicos do campeonato.">
+        <Secao
+          numero={numeros.identificacao}
+          titulo="Identificação"
+          descricao="Dados básicos do campeonato. Mês e ano são registrados automaticamente na criação."
+        >
           <Campo rotulo="Nome do torneio">
             <input
               className="input"
@@ -722,27 +846,6 @@ export default function AdminTorneio() {
               required
             />
           </Campo>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Campo rotulo="Mês">
-              <select className="input" value={form.mes} onChange={(e) => atualizar('mes', e.target.value)}>
-                {MESES.map((m) => (
-                  <option key={m} value={m} className="bg-arena-surface2">{m}</option>
-                ))}
-              </select>
-            </Campo>
-            <Campo rotulo="Ano">
-              <input
-                className="input text-center"
-                type="number"
-                inputMode="numeric"
-                min={2024}
-                max={2100}
-                value={form.ano}
-                onChange={(e) => atualizar('ano', e.target.value)}
-              />
-            </Campo>
-          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Campo rotulo="Plataforma">
@@ -784,10 +887,14 @@ export default function AdminTorneio() {
                 </option>
               ))}
             </select>
+            {descricaoFormato && (
+              <p className="mt-1.5 text-xs text-arena-muted">{descricaoFormato}</p>
+            )}
           </Campo>
         </Secao>
 
-        <Secao numero="2" titulo="Fase de grupos" descricao="Como os grupos serão formados.">
+        {ehGrupos && (
+        <Secao numero={numeros.grupos} titulo="Fase de grupos" descricao="Como os grupos serão formados.">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-arena-muted">
               Atalhos das regras oficiais (FIFA / CONMEBOL)
@@ -861,31 +968,41 @@ export default function AdminTorneio() {
             onChange={(v) => atualizar('gruposIdaVolta', v)}
           />
         </Secao>
+        )}
 
-        <Secao numero="3" titulo="Mata-mata" descricao="Regras das fases eliminatórias.">
-          <Alternar
-            rotulo="Ida e volta no mata-mata"
-            descricao="Confrontos com jogo de ida e volta."
-            valor={form.mmIdaVolta}
-            onChange={(v) => atualizar('mmIdaVolta', v)}
-          />
-          <Alternar
-            rotulo="Prorrogação"
-            descricao="120 minutos em caso de empate."
-            valor={form.prorrogacao}
-            onChange={(v) => atualizar('prorrogacao', v)}
-          />
-          <Alternar
-            rotulo="Disputa de pênaltis"
-            descricao="Decide a série em caso de empate."
-            valor={form.penaltis}
-            onChange={(v) => atualizar('penaltis', v)}
-          />
+        {!ehTodosContraTodos && (
+        <Secao numero={numeros.mataMata} titulo="Mata-mata" descricao="Como as fases eliminatórias funcionam.">
+          <div className="rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2.5 text-xs text-arena-muted">
+            <p>
+              Jogos únicos e eliminatórios. Empates são decididos nos pênaltis no momento
+              do registro do placar.
+            </p>
+          </div>
 
           <ResumoRegras resumo={resumo} />
         </Secao>
+        )}
 
-        <Secao numero="4" titulo="Critérios de desempate" descricao="Ordem aplicada na tabela.">
+        {ehTodosContraTodos && (
+        <Secao numero={numeros.disputa} titulo="Disputa" descricao="Como a tabela única será disputada.">
+          <Alternar
+            rotulo="Ida e volta"
+            descricao="Cada jogador enfrenta todos os outros duas vezes."
+            valor={form.gruposIdaVolta}
+            onChange={(v) => atualizar('gruposIdaVolta', v)}
+          />
+
+          <div className="space-y-1 rounded-xl border border-white/10 bg-arena-surface2 px-3 py-2.5 text-xs text-arena-muted">
+            {resumo.confirmacoes.map((texto, i) => (
+              <p key={i}>{texto}</p>
+            ))}
+            <p>Classificação geral — o líder ao final dos jogos é o campeão.</p>
+          </div>
+        </Secao>
+        )}
+
+        {!ehMataDireto && (
+        <Secao numero={numeros.desempate} titulo="Critérios de desempate" descricao="Ordem aplicada na tabela.">
           <div className="space-y-2">
             {CRITERIOS.map((c) => {
               const marcado = form.desempate.includes(c.valor)
@@ -924,8 +1041,9 @@ export default function AdminTorneio() {
             })}
           </div>
         </Secao>
+        )}
 
-        <Secao numero="5" titulo="Regras do torneio" descricao="Regras gerais e etapas automáticas.">
+        <Secao numero={numeros.regras} titulo="Regras do torneio" descricao="Regras gerais e etapas automáticas.">
           <Alternar
             rotulo="Permitir times repetidos"
             descricao="Dois jogadores podem escolher o mesmo time."
@@ -946,7 +1064,7 @@ export default function AdminTorneio() {
         </Secao>
 
         <Secao
-          numero="6"
+          numero={numeros.ligas}
           titulo={id ? 'Ligas e times' : 'Liga e times'}
           descricao={
             id
@@ -1279,6 +1397,72 @@ export default function AdminTorneio() {
           </button>
         </div>
       </form>
+
+      {apagarAberto && torneio && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm p-4 sm:items-center">
+          <div className="card w-full max-w-md !p-0 overflow-hidden animate-[deslizarUp_0.3s_ease-out]">
+            <div className="relative bg-gradient-to-br from-arena-danger/15 via-arena-surface to-arena-bg p-5">
+              <div className="flex items-start gap-3">
+                <div className="recorte grid size-11 shrink-0 place-items-center border border-arena-danger/40 bg-arena-danger/15 text-arena-danger">
+                  <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-display text-xl font-extrabold leading-tight">
+                    Apagar "{torneio.nome}"?
+                  </h2>
+                  <p className="mt-1.5 text-xs text-arena-muted">
+                    Essa ação não pode ser desfeita. Todos os dados do torneio serão removidos permanentemente: inscritos, times da roleta, partidas, classificação e resultados.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-xs font-semibold uppercase tracking-widest text-arena-danger">
+                  Digite o nome do torneio para confirmar
+                </label>
+                <input
+                  type="text"
+                  value={apagarConfirmacao}
+                  onChange={(e) => setApagarConfirmacao(e.target.value)}
+                  placeholder={torneio.nome}
+                  className="input mt-2"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !apagando) confirmarApagar()
+                  }}
+                />
+              </div>
+
+              {erroApagar && (
+                <p className="mt-3 text-xs text-arena-danger">{erroApagar}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 border-t border-white/10 p-4 bg-arena-bg/30">
+              <button
+                type="button"
+                onClick={fecharApagar}
+                disabled={apagando}
+                className="btn-ghost text-center text-sm disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarApagar}
+                disabled={apagando}
+                className="text-center text-sm recorte border border-arena-danger/40 bg-arena-danger px-4 py-3 font-bold uppercase tracking-wider text-white shadow-[0_0_22px_rgba(255,59,92,0.25)] transition hover:bg-arena-danger/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {apagando ? 'Apagando...' : 'Sim, apagar torneio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -317,7 +317,7 @@ export default function Perfil() {
         <Capa url={capaVisual} />
       </div>
 
-      <div className="mt-[-2.5rem] pl-2">
+      <div className="relative z-10 mt-[-2.5rem] pl-2">
         <Avatar perfil={perfilVisual} time={time} grande />
       </div>
 

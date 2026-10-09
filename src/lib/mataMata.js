@@ -2,6 +2,7 @@
 // Mata-mata em jogo único: "rodada" identifica a posição do confronto na fase.
 
 import { calcularClassificacao } from './classificacao.js'
+import { ordenarPorSorteio } from './grupos.js'
 
 export function classificadosParaMataMata(
   participantes,
@@ -49,6 +50,13 @@ export function montarChaveMataMata(classificados) {
     })
   }
   return jogos
+}
+
+// Mata-mata direto: todos os participantes entram na primeira fase eliminatória,
+// semeados pela ordem do sorteio. Precisa de 4, 8 ou 16 participantes.
+export function montarChaveDireta(participantes) {
+  const ordenados = ordenarPorSorteio(participantes)
+  return montarChaveMataMata(ordenados.map((p) => ({ id: p.id })))
 }
 
 export function vencedorDeJogo(jogo) {

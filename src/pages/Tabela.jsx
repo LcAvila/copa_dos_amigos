@@ -6,11 +6,14 @@ import CabecalhoAdmin from '../components/CabecalhoAdmin'
 import Loading from '../components/Loading'
 import StatusBadge from '../components/StatusBadge'
 import Confete from '../components/Confete'
-import { Bola } from '../components/Artes'
+import { Bola, Medalha } from '../components/Artes'
 import { gerarJogos } from '../lib/tabela'
+import { distribuirGrupos } from '../lib/grupos'
+import { calcularClassificacao } from '../lib/classificacao'
 import {
   classificadosParaMataMata,
   montarChaveMataMata,
+  montarChaveDireta,
   montarProximaFase,
   vencedorDeJogo,
 } from '../lib/mataMata'
@@ -34,6 +37,75 @@ function mensagemErro(error, padrao) {
 
 function nomeDe(participante) {
   return participante?.perfil?.nome ?? participante?.apelido ?? 'A definir'
+}
+
+const COLUNAS_CLASSIFICACAO = ['PTS', 'J', 'V', 'E', 'D', 'GP', 'GC', 'SG']
+
+const ROTULO_CRITERIO = {
+  saldo_gols: 'Saldo de gols',
+  gols_pro: 'Gols marcados',
+  gols_contra: 'Menos gols sofridos',
+  vitorias: 'Vitórias',
+  confronto_direto: 'Confronto direto',
+}
+
+function AvatarMini({ url, nome }) {
+  if (url) {
+    return <img src={url} alt="" className="size-7 shrink-0 rounded-full object-cover" />
+  }
+  return (
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/10 font-display text-[10px] font-bold text-arena-muted">
+      {(nome ?? '?').slice(0, 2).toUpperCase()}
+    </span>
+  )
+}
+
+function LinhaClassificacao({ linha, posicao, classificados, medalha }) {
+  const participante = linha.participante
+  const destaque = posicao <= classificados
+
+  return (
+    <div
+      className={`flex items-center gap-2 border-l-2 px-3 py-2 transition ${
+        destaque ? 'border-l-arena-primary bg-arena-primary/5' : 'border-l-transparent'
+      }`}
+    >
+      {medalha ? (
+        <Medalha cor={medalha} className="size-6 shrink-0" />
+      ) : (
+        <span
+          className={`w-5 shrink-0 text-center font-display text-sm font-bold ${
+            destaque ? 'text-arena-primary' : 'text-arena-muted'
+          }`}
+        >
+          {posicao}
+        </span>
+      )}
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <AvatarMini url={participante?.perfil?.avatar_url} nome={participante?.perfil?.nome} />
+        <span className="truncate text-sm font-medium">
+          {participante?.perfil?.nome ?? participante?.apelido ?? 'Participante'}
+        </span>
+        {participante?.times?.escudo_url && (
+          <img
+            src={participante.times.escudo_url}
+            alt={participante.times.nome}
+            className="size-4 shrink-0 object-contain"
+          />
+        )}
+      </span>
+      <span className="w-7 shrink-0 text-center font-display text-sm font-bold text-white">
+        {linha.pontos}
+      </span>
+      {[linha.jogos, linha.vitorias, linha.empates, linha.derrotas, linha.golsPro, linha.golsContra, linha.saldo].map(
+        (valor, i) => (
+          <span key={COLUNAS_CLASSIFICACAO[i + 1]} className="w-7 shrink-0 text-center text-[11px] tabular-nums text-arena-muted">
+            {valor}
+          </span>
+        ),
+      )}
+    </div>
+  )
 }
 
 function agruparPorRodada(jogos) {
@@ -198,6 +270,11 @@ export default function Tabela() {
       )
       .on(
         'postgres_changes',
+        { event: '*', schema: 'public', table: 'participantes', filter: `torneio_id=eq.${id}` },
+        () => setRecarga((r) => r + 1),
+      )
+      .on(
+        'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'torneios', filter: `id=eq.${id}` },
         () => setRecarga((r) => r + 1),
       )
@@ -219,23 +296,101 @@ export default function Tabela() {
       return
     }
     if (participantes.length < 2) {
-      setErro('Inscreva ao menos 2 participantes antes de gerar a tabela (faça o sorteio primeiro).')
-      return
-    }
-
-    const idaEVolta = Boolean(torneio.config?.grupos?.idaEVolta)
-    const jogos = gerarJogos(participantes, { idaEVolta }).map((j) => ({
-      ...j,
-      torneio_id: id,
-    }))
-    if (jogos.length === 0) {
-      setErro('Cada grupo precisa de ao menos 2 participantes para gerar jogos.')
+      setErro('Inscreva ao menos 2 participantes antes de gerar os jogos (faça o sorteio primeiro).')
       return
     }
 
     setGerando(true)
     setErro('')
     setConfirmandoGerar(false)
+
+    const agora = new Date().toISOString()
+
+    // Mata-mata direto: monta a chave eliminatória com todos os inscritos.
+    if (torneio.formato === 'mata_mata') {
+      const chave = montarChaveDireta(participantes)
+      if (!chave) {
+        setGerando(false)
+        setErro('O mata-mata direto precisa de exatamente 4, 8 ou 16 participantes inscritos.')
+        return
+      }
+
+      const { error: erroApagar } = await supabase.from('partidas').delete().eq('torneio_id', id)
+      if (erroApagar) {
+        setGerando(false)
+        setErro(mensagemErro(erroApagar, 'Não foi possível limpar a chave antiga.'))
+        return
+      }
+
+      const { error } = await supabase
+        .from('partidas')
+        .insert(chave.map((j) => ({ ...j, torneio_id: id })))
+      if (error) {
+        setGerando(false)
+        setErro(mensagemErro(error, 'Não foi possível gerar a chave do mata-mata.'))
+        return
+      }
+
+      const config = {
+        ...(torneio.config ?? {}),
+        tabela: { geradoEm: agora, total: chave.length },
+        mataMata: { ...(torneio.config?.mataMata ?? {}), geradoEm: agora, presente: true },
+      }
+      const statusNovo = ['configuracao', 'inscricoes', 'sorteio'].includes(torneio.status)
+        ? 'mata_mata'
+        : torneio.status
+      const { error: erroStatus } = await supabase
+        .from('torneios')
+        .update({ config, status: statusNovo })
+        .eq('id', id)
+
+      setGerando(false)
+      if (erroStatus) {
+        setErro(mensagemErro(erroStatus, 'A chave foi gerada, mas o status não foi atualizado.'))
+      } else {
+        setAviso(`Chave gerada: ${chave.length} confrontos.`)
+      }
+      recarregar()
+      return
+    }
+
+    // Grupos + mata-mata: distribui os inscritos nos grupos automaticamente.
+    let participantesParaJogos = participantes
+    if (torneio.formato === 'grupos_mata_mata') {
+      const quantidade = torneio.config?.grupos?.quantidade ?? 4
+      const distribuicao = distribuirGrupos(participantes, quantidade)
+      const porId = new Map(distribuicao.map((d) => [d.id, d.grupo]))
+      participantesParaJogos = participantes.map((p) => ({ ...p, grupo: porId.get(p.id) ?? p.grupo }))
+
+      const resultados = await Promise.all(
+        distribuicao.map((d) =>
+          supabase.from('participantes').update({ grupo: d.grupo }).eq('id', d.id),
+        ),
+      )
+      const erroGrupo = resultados.find((r) => r.error)?.error
+      if (erroGrupo) {
+        setGerando(false)
+        setErro(mensagemErro(erroGrupo, 'Não foi possível distribuir os grupos.'))
+        return
+      }
+    } else {
+      // Todos contra todos: sem grupos, todos entram no grupo "Geral".
+      participantesParaJogos = participantes.map((p) => ({ ...p, grupo: null }))
+      if (participantes.some((p) => p.grupo)) {
+        await supabase.from('participantes').update({ grupo: null }).eq('torneio_id', id)
+      }
+    }
+
+    const idaEVolta = Boolean(torneio.config?.grupos?.idaEVolta)
+    const jogos = gerarJogos(participantesParaJogos, { idaEVolta }).map((j) => ({
+      ...j,
+      torneio_id: id,
+    }))
+    if (jogos.length === 0) {
+      setGerando(false)
+      setErro('Cada grupo precisa de ao menos 2 participantes para gerar jogos.')
+      return
+    }
 
     const { error: erroApagar } = await supabase
       .from('partidas')
@@ -257,7 +412,7 @@ export default function Tabela() {
 
     const config = {
       ...(torneio.config ?? {}),
-      tabela: { geradoEm: new Date().toISOString(), total: jogos.length, idaEVolta },
+      tabela: { geradoEm: agora, total: jogos.length, idaEVolta },
     }
     const statusNovo = ['configuracao', 'inscricoes', 'sorteio'].includes(torneio.status)
       ? 'grupos'
@@ -279,7 +434,7 @@ export default function Tabela() {
   async function garantirCampeao() {
     const [torneioAtual, partidasAtuais] = await Promise.all([
       supabase.from('torneios').select('*').eq('id', id).single(),
-      supabase.from('partidas').select('*').eq('torneio_id', id).eq('fase', 'final'),
+      supabase.from('partidas').select('*').eq('torneio_id', id),
     ])
     await registrarCampeao(torneioAtual.data, partidasAtuais.data ?? [])
   }
@@ -289,10 +444,25 @@ export default function Tabela() {
       if (!torneioAtual || torneioAtual.status === 'finalizado' || torneioAtual.config?.campeao) {
         return
       }
-      const finais = (partidasAtuais ?? []).filter((p) => p.fase === 'final' && p.finalizada)
-      if (finais.length !== 1) return
-      const vencedor = vencedorDeJogo(finais[0])
-      if (vencedor === undefined) return
+
+      let vencedor
+      if (torneioAtual.formato === 'todos_contra_todos') {
+        // Sem mata-mata: o campeão é o líder da classificação geral.
+        const jogos = (partidasAtuais ?? []).filter((p) => p.fase === 'grupos')
+        if (jogos.length === 0 || !jogos.every((p) => p.finalizada)) return
+        const linhas = calcularClassificacao(
+          participantes,
+          partidasAtuais ?? [],
+          torneioAtual.config?.desempate ?? ['saldo_gols', 'gols_pro'],
+        )
+        vencedor = linhas[0]?.id
+      } else {
+        const finais = (partidasAtuais ?? []).filter((p) => p.fase === 'final' && p.finalizada)
+        if (finais.length !== 1) return
+        vencedor = vencedorDeJogo(finais[0])
+      }
+
+      if (vencedor === undefined || vencedor === null) return
 
       const config = {
         ...(torneioAtual.config ?? {}),
@@ -303,7 +473,7 @@ export default function Tabela() {
         .update({ config, status: 'finalizado' })
         .eq('id', id)
       if (!error) {
-        setAviso('Final concluída! Campeão definido.')
+        setAviso('Campeonato finalizado! Campeão definido.')
         setRecarga((r) => r + 1)
       }
     } catch {
@@ -498,6 +668,9 @@ export default function Tabela() {
   const mataMata = partidas.filter((p) => p.fase !== 'grupos')
   const grupos = [...new Set(faseGrupos.map((p) => p.grupo ?? 'Geral'))].sort()
   const cfgGrupos = torneio.config?.grupos
+  const formato = torneio.formato
+  const ehMataDireto = formato === 'mata_mata'
+  const ehTodosContraTodos = formato === 'todos_contra_todos'
   const gruposTodosFinalizados =
     faseGrupos.length > 0 && faseGrupos.every((p) => p.finalizada)
 
@@ -516,6 +689,31 @@ export default function Tabela() {
   const porFase = ORDEM_FASES.filter(
     (fase) => fase !== 'grupos' && mataMata.some((p) => p.fase === fase),
   ).map((fase) => ({ fase, confrontos: agruparPorRodada(mataMata.filter((p) => p.fase === fase)) }))
+
+  const classificacaoGeral = torneio.formato === 'todos_contra_todos'
+  const criterios = torneio.config?.desempate ?? ['saldo_gols', 'gols_pro']
+  const classificadosPorGrupo = cfgGrupos?.classificadosPorGrupo ?? 2
+  const gruposParticipantes = [
+    ...new Set(participantes.map((p) => p.grupo?.trim()).filter(Boolean)),
+  ].sort()
+
+  function linhasClassificacao(lista) {
+    return calcularClassificacao(lista, partidas, criterios).map((linha) => ({
+      ...linha,
+      participante: lista.find((p) => p.id === linha.id),
+    }))
+  }
+
+  const blocosClassificacao =
+    participantes.length === 0 || faseGrupos.length === 0
+      ? []
+      : classificacaoGeral
+        ? [{ titulo: null, linhas: linhasClassificacao(participantes), classificados: 1 }]
+        : gruposParticipantes.map((grupo) => ({
+            titulo: `Grupo ${grupo}`,
+            linhas: linhasClassificacao(participantes.filter((p) => p.grupo?.trim() === grupo)),
+            classificados: classificadosPorGrupo,
+          }))
 
   function botaoPartida(partida) {
     return (
@@ -643,63 +841,102 @@ export default function Tabela() {
       />
 
       <div className="entrar mt-6 space-y-3">
+        <div className="flex items-center justify-end gap-3">
+          <Link
+            to={`/torneio/${id}/resumo`}
+            className="text-[11px] font-bold uppercase tracking-wider text-arena-secondary active:opacity-70"
+          >
+            Resumo do torneio →
+          </Link>
+        </div>
+
         {aviso && <div className="card border-arena-primary/40 text-sm text-arena-primary">{aviso}</div>}
         {erro && <div className="card border-arena-danger/40 text-sm text-arena-danger">{erro}</div>}
 
-        <section className="card space-y-3">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-arena-primary">
-              1. Gerar jogos
-            </p>
-            <h2 className="font-display text-lg font-bold leading-tight">
-              {total > 0 ? 'Tabela gerada' : 'Gerar tabela de jogos'}
-            </h2>
-            <p className="mt-0.5 text-xs text-arena-muted">
-              {cfgGrupos
-                ? `${cfgGrupos.quantidade} ${cfgGrupos.quantidade === 1 ? 'grupo' : 'grupos'} de ${
-                    cfgGrupos.jogadoresPorGrupo
-                  } • ${cfgGrupos.idaEVolta ? 'ida e volta' : 'turno único'}`
-                : 'Round-robin dentro de cada grupo.'}
-              {total > 0 && ` ${total} jogos no total.`}
-            </p>
-          </div>
-
-          {ehAdmin ? (
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                className="btn-primary w-full disabled:opacity-60"
-                onClick={gerarTabela}
-                disabled={gerando}
-              >
-                {gerando
-                  ? 'Gerando...'
-                  : total > 0
-                    ? confirmandoGerar
-                      ? 'Confirmar? Isso zera os placares'
-                      : 'Regenerar jogos'
-                    : 'Gerar tabela de jogos'}
-              </button>
-              {total > 0 && confirmandoGerar && (
-                <button
-                  type="button"
-                  className="btn-ghost w-full"
-                  onClick={() => setConfirmandoGerar(false)}
-                  disabled={gerando}
-                >
-                  Cancelar
-                </button>
-              )}
+        {blocosClassificacao.length > 0 && (
+          <section className="card overflow-hidden !p-0">
+            <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
+              <p className="flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-[0.18em] text-arena-primary">
+                <Bola className="size-3.5" />
+                {classificacaoGeral ? 'Classificação geral' : 'Classificação por grupos'}
+              </p>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-arena-muted">
+                {finalizadas}/{total} jogos
+              </span>
             </div>
-          ) : (
-            <p className="text-xs text-arena-muted">
-              Somente o administrador gera a tabela.{' '}
-              <Link to="/admin/login" className="text-arena-primary underline">
-                Entrar como admin
-              </Link>
+
+            <div className="flex items-center gap-2 px-3 pb-1.5">
+              <span className="flex min-w-0 flex-1 items-center gap-2 font-display text-[11px] font-bold uppercase tracking-[0.18em] text-arena-muted">
+                Jogador
+              </span>
+              <span className="w-7 shrink-0 text-center text-[10px] font-bold text-arena-muted">PTS</span>
+              {COLUNAS_CLASSIFICACAO.slice(1).map((coluna) => (
+                <span key={coluna} className="w-7 shrink-0 text-center text-[10px] font-bold text-arena-muted">
+                  {coluna}
+                </span>
+              ))}
+            </div>
+
+            {blocosClassificacao.map((bloco) => (
+              <div key={bloco.titulo ?? '*'} className="border-t border-white/5">
+                {bloco.titulo && (
+                  <p className="px-3 py-1.5 font-display text-[11px] font-bold uppercase tracking-[0.18em] text-arena-secondary">
+                    {bloco.titulo}
+                  </p>
+                )}
+                <div className="divide-y divide-white/5">
+                  {bloco.linhas.map((linha, i) => (
+                    <LinhaClassificacao
+                      key={linha.id}
+                      linha={linha}
+                      posicao={i + 1}
+                      classificados={bloco.classificados}
+                      medalha={i === 0 ? 'ouro' : i === 1 ? 'prata' : i === 2 ? 'bronze' : null}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <p className="border-t border-white/5 px-3 py-2 text-[11px] text-arena-muted">
+              Critérios de desempate:{' '}
+              {criterios.map((criterio) => ROTULO_CRITERIO[criterio] ?? criterio).join(' • ') || 'nenhum'}
             </p>
-          )}
-        </section>
+          </section>
+        )}
+
+        {total === 0 && ehAdmin && (
+          <section className="card space-y-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-arena-primary">
+                Gerar jogos
+              </p>
+              <h2 className="font-display text-lg font-bold leading-tight">
+                {ehMataDireto ? 'Gerar chave do mata-mata' : 'Gerar tabela de jogos'}
+              </h2>
+              <p className="mt-0.5 text-xs text-arena-muted">
+                {ehMataDireto
+                  ? 'Chave eliminatória direta com 4, 8 ou 16 participantes, semeados pela ordem do sorteio.'
+                  : ehTodosContraTodos
+                    ? `Todos se enfrentam em ${torneio.config?.grupos?.idaEVolta ? 'ida e volta' : 'turno único'}.`
+                    : cfgGrupos
+                      ? `${cfgGrupos.quantidade} ${cfgGrupos.quantidade === 1 ? 'grupo' : 'grupos'} de ${
+                          cfgGrupos.jogadoresPorGrupo
+                        } • ${cfgGrupos.idaEVolta ? 'ida e volta' : 'turno único'}`
+                      : 'Round-robin dentro de cada grupo.'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="btn-primary w-full disabled:opacity-60"
+              onClick={gerarTabela}
+              disabled={gerando}
+            >
+              {gerando ? 'Gerando...' : ehMataDireto ? 'Gerar chave' : 'Gerar tabela de jogos'}
+            </button>
+          </section>
+        )}
 
         {participantes.length === 0 && (
           <div className="card text-center">
@@ -727,7 +964,7 @@ export default function Tabela() {
             <div>
               <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-arena-primary">
                 <Bola className="size-3.5 animate-[girarBola_4s_linear_infinite]" />
-                2. Jogos
+                Jogos
               </p>
               <h2 className="font-display text-lg font-bold leading-tight">Resultados</h2>
             </div>
@@ -777,7 +1014,7 @@ export default function Tabela() {
               </div>
             ))}
 
-            {filtradas.length === 0 && (
+            {faseGrupos.length > 0 && filtradas.length === 0 && (
               <p className="text-sm text-arena-muted">Nenhum jogo neste grupo.</p>
             )}
 
@@ -801,68 +1038,111 @@ export default function Tabela() {
           </section>
         )}
 
-        <section className="card relative space-y-3 overflow-hidden">
-          {torneio.status === 'finalizado' && <Confete />}
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-arena-primary">
-              3. Mata-mata
-            </p>
-            <h2 className="font-display text-lg font-bold leading-tight">Chaveamento</h2>
-            <p className="mt-0.5 text-xs text-arena-muted">
-              {mataMata.length > 0
-                ? `${mataMata.length} ${mataMata.length === 1 ? 'partida' : 'partidas'} • jogos únicos •
-                  vencedor avança a partir da classificação`
-                : 'Gerado automaticamente a partir dos classificados da fase de grupos.'}
-            </p>
-          </div>
+        {!ehTodosContraTodos && (
+          <section className="card relative space-y-3 overflow-hidden">
+            {torneio.status === 'finalizado' && <Confete />}
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-arena-primary">
+                Mata-mata
+              </p>
+              <h2 className="font-display text-lg font-bold leading-tight">Chaveamento</h2>
+              <p className="mt-0.5 text-xs text-arena-muted">
+                {mataMata.length > 0
+                  ? `${mataMata.length} ${mataMata.length === 1 ? 'partida' : 'partidas'} • jogos únicos • o vencedor avança`
+                  : ehMataDireto
+                    ? 'A chave é gerada a partir dos participantes inscritos.'
+                    : 'Gerado automaticamente a partir dos classificados da fase de grupos.'}
+              </p>
+            </div>
 
-          {ehAdmin ? (
-            <div className="flex flex-col gap-2">
-              {mataMata.length === 0 ? (
-                <>
+            {ehAdmin ? (
+              <div className="flex flex-col gap-2">
+                {mataMata.length === 0 ? (
+                  ehMataDireto ? (
+                    <p className="text-xs text-arena-muted">
+                      Use "Gerar chave" acima para criar os primeiros confrontos.
+                    </p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-primary w-full disabled:opacity-60"
+                        onClick={gerarMataMata}
+                        disabled={gerandoMataMata || !gruposTodosFinalizados}
+                      >
+                        {gerandoMataMata ? 'Gerando...' : 'Gerar mata-mata'}
+                      </button>
+                      {!gruposTodosFinalizados && (
+                        <p className="text-xs text-arena-muted">
+                          Finalize todos os jogos da fase de grupos para liberar o mata-mata.
+                        </p>
+                      )}
+                    </>
+                  )
+                ) : podeAvancar ? (
                   <button
                     type="button"
                     className="btn-primary w-full disabled:opacity-60"
-                    onClick={gerarMataMata}
-                    disabled={gerandoMataMata || !gruposTodosFinalizados}
+                    onClick={avancarFase}
+                    disabled={gerandoMataMata}
                   >
-                    {gerandoMataMata ? 'Gerando...' : 'Gerar mata-mata'}
+                    {gerandoMataMata
+                      ? 'Gerando...'
+                      : `Gerar próxima fase (${podeAvancar.criar
+                          .map((f) => ROTULOS_FASE[f])
+                          .join(' + ')})`}
                   </button>
-                  {!gruposTodosFinalizados && (
-                    <p className="text-xs text-arena-muted">
-                      Finalize todos os jogos da fase de grupos para liberar o mata-mata.
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
-                  {podeAvancar ? (
-                    <button
-                      type="button"
-                      className="btn-primary w-full disabled:opacity-60"
-                      onClick={avancarFase}
-                      disabled={gerandoMataMata}
-                    >
-                      {gerandoMataMata
-                        ? 'Gerando...'
-                        : `Gerar próxima fase (${podeAvancar.criar
-                            .map((f) => ROTULOS_FASE[f])
-                            .join(' + ')})`}
-                    </button>
-                  ) : (
-                    <p className="text-xs text-arena-muted">
-                      Aguardando os placares das fases anteriores para avançar.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-arena-muted">
-              O administrador controla o mata-mata. Esta tela atualiza em tempo real.
-            </p>
-          )}
-        </section>
+                ) : (
+                  <p className="text-xs text-arena-muted">
+                    Aguardando os placares das fases anteriores para avançar.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-arena-muted">
+                O administrador controla o mata-mata. Esta tela atualiza em tempo real.
+              </p>
+            )}
+          </section>
+        )}
+
+        {total > 0 && ehAdmin && (
+          <div className="mt-4">
+            {confirmandoGerar ? (
+              <div className="card space-y-2 border-arena-danger/40 text-center">
+                <p className="text-xs text-arena-danger">
+                  Regenerar a tabela apaga todos os placares lançados.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="btn-ghost flex-1"
+                    onClick={() => setConfirmandoGerar(false)}
+                    disabled={gerando}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary flex-1 disabled:opacity-60"
+                    onClick={gerarTabela}
+                    disabled={gerando}
+                  >
+                    {gerando ? 'Gerando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmandoGerar(true)}
+                className="block w-full text-center text-[11px] font-bold uppercase tracking-wider text-arena-muted active:opacity-70"
+              >
+                Regenerar tabela de jogos
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

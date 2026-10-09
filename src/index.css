@@ -55,8 +55,8 @@
     z-index: -1;
     pointer-events: none;
     background-image:
-      radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.18), transparent 60%),
-      linear-gradient(rgba(4, 7, 15, 0.42), rgba(4, 7, 15, 0.6)),
+      radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.10), transparent 60%),
+      linear-gradient(rgba(4, 7, 15, 0.78), rgba(4, 7, 15, 0.90)),
       url("./assets/background 1.jpg");
     background-size: cover;
     background-position: center;
@@ -67,8 +67,8 @@
   @media (min-width: 768px) and (orientation: landscape) {
     body::before {
       background-image:
-        radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.18), transparent 60%),
-        linear-gradient(rgba(4, 7, 15, 0.42), rgba(4, 7, 15, 0.6)),
+        radial-gradient(1100px 620px at 115% -12%, rgba(46, 140, 255, 0.10), transparent 60%),
+        linear-gradient(rgba(4, 7, 15, 0.78), rgba(4, 7, 15, 0.90)),
         url("./assets/Paisagem/Background Principal Paisagem.jpg");
       background-size: cover;
       background-position: center;
@@ -83,10 +83,10 @@
     pointer-events: none;
     background: conic-gradient(
       from 90deg at 50% -10%,
-      rgba(46, 140, 255, 0.12),
+      rgba(46, 140, 255, 0.06),
       transparent 24%,
       transparent 60%,
-      rgba(246, 225, 75, 0.07),
+      rgba(246, 225, 75, 0.04),
       transparent 82%
     );
     animation: girarFoco 26s linear infinite;
